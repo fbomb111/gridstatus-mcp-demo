@@ -65,23 +65,22 @@ Restart Claude Desktop after editing the config.
 
 ## Demo Script
 
-### 1. Resources (App-Controlled Context)
+Click the "+" icon in Claude Desktop → "Add from gridstatus" to see 4 options:
 
-Click the "+" icon in Claude Desktop → Connectors → gridstatus to see:
-- **CAISO Grid Overview** — static reference data (price patterns, trading hubs, grid facts)
-- **CAISO Live Conditions** — fetches live snapshot from the API
-
-Attach either resource to your conversation for context before asking questions.
-
-### 2. Prompts (User-Controlled Templates)
-
-In the "+" menu, look for prompt templates:
+### 1. Prompts (User-Controlled Templates)
 
 **Grid Briefing** (no args):
 > Click it. Claude receives a pre-structured request to get the snapshot, check if price is unusual, and explain if needed. It chains all 3 tools automatically.
 
 **Investigate Price** (takes ISO arg):
 > Click it, enter "CAISO". Claude follows a structured investigation: check price → if unusual, explain why → if normal, summarize conditions.
+
+### 2. Resources (App-Controlled Context)
+
+- **CAISO Grid Overview** — static reference data (price patterns, trading hubs, grid facts)
+- **Live Grid Conditions** — fetches live snapshot from the API
+
+Attach either resource to your conversation for context before asking questions.
 
 ### 3. Tools (Model-Controlled)
 
