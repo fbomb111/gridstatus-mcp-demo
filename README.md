@@ -2,7 +2,74 @@
 
 A Model Context Protocol (MCP) server that provides real-time California electricity grid data to Claude Desktop. Built as a comprehensive showcase of MCP protocol primitives.
 
-## Architecture
+## How It Works
+
+Four layers connect a user's question to live grid data:
+
+1. **Claude Desktop** (host) — connects to the MCP server via stdio on launch. Discovers available tools, resources, and prompts. When the user asks a question, Claude decides which tools to call and synthesizes the results into a response.
+
+2. **MCP Server** (TypeScript, this repo) — the protocol bridge. Translates MCP tool calls into REST API requests to the backend. Also serves static resources (CAISO overview) and prompt templates (grid briefing, price investigation) directly — no backend call needed.
+
+3. **Backend API** (Python, Azure Function App) — the data layer. Fetches live grid data from gridstatus.io, weather from Open-Meteo, computes statistical baselines, and calls Azure OpenAI when AI synthesis is needed.
+
+4. **External services** — [gridstatus.io](https://gridstatus.io) for real-time CAISO data, [Open-Meteo](https://open-meteo.com) for weather, Azure OpenAI for LLM synthesis.
+
+### Data flow by tool
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Claude as Claude Desktop
+    participant MCP as MCP Server
+    participant API as Backend API
+    participant GS as gridstatus.io
+    participant WX as Open-Meteo
+    participant LLM as Azure OpenAI
+
+    Note over User,LLM: Tool 1: Market Snapshot (no AI)
+    User->>Claude: "What's happening on the grid?"
+    Claude->>MCP: get_market_snapshot
+    MCP->>API: GET /api/market/snapshot
+    API->>GS: fuel mix, load, prices, status
+    GS-->>API: live CAISO data
+    API-->>MCP: summary + JSON (rule-based highlights)
+    MCP-->>Claude: text content blocks
+    Claude-->>User: natural language response
+
+    Note over User,LLM: Tool 2: Price Analysis (baselines, no AI)
+    User->>Claude: "Is that price normal?"
+    Claude->>MCP: is_price_unusual
+    MCP->>API: GET /api/market/price-analysis
+    API->>GS: current price
+    GS-->>API: price data
+    API-->>MCP: sigma, percentile, verdict (statistical)
+    MCP-->>Claude: text content blocks
+    Claude-->>User: natural language response
+
+    Note over User,LLM: Tool 3: Explain Conditions (LLM synthesis)
+    User->>Claude: "Why are prices high?"
+    Claude->>MCP: explain_grid_conditions
+    MCP->>API: GET /api/market/explain
+    API->>GS: fuel mix, load, prices
+    API->>WX: weather for load centers
+    GS-->>API: grid data
+    WX-->>API: temperature, wind
+    API->>LLM: structured context + analyst prompt
+    LLM-->>API: explanation + contributing factors
+    API-->>MCP: summary + JSON
+    MCP-->>Claude: text content blocks
+    Claude-->>User: natural language response
+```
+
+### Under the hood
+
+**Market Snapshot** — Fetches fuel mix, load, prices, and grid status from the gridstatus SDK. Generates highlights using domain rules (solar dominance at >30%, battery charging/discharging, gas reliance, price alerts). Pure data + rules, no AI.
+
+**Price Analysis** — Gets the current average LMP and compares it against hardcoded hourly baselines (typical price for each hour of day) and a rolling 7-day statistical window. Returns standard deviations from mean (sigma), percentile rank, and a severity classification. Deterministic — same price at the same hour always produces the same verdict.
+
+**Explain Conditions** — Gathers grid data from gridstatus *and* weather from Open-Meteo (Sacramento, LA, SF temperatures and wind speeds). Passes all of it as structured context to Azure OpenAI with an energy analyst persona prompt. The LLM synthesizes a multi-paragraph explanation with ranked contributing factors. This is the only tool that uses AI on the server side — Claude Desktop's own LLM is a *second* layer of AI that interprets the result for the user.
+
+## Project Structure
 
 ```
 backend/          Azure Function App — REST API for grid data
