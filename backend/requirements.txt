@@ -1,0 +1,7 @@
+azure-functions
+azure-identity
+openai
+httpx
+pydantic
+gridstatus
+pytz
