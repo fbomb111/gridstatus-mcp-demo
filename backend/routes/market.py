@@ -1,14 +1,15 @@
 """Market data routes — the three core MCP-backed tools.
 
-Tool 1: get_market_snapshot  → GET /api/market/snapshot     (Approach A: no AI)
-Tool 2: explain_grid_conditions → GET /api/market/explain   (Approach B: LLM synthesis)
-Tool 3: is_price_unusual     → GET /api/market/price-analysis (Approach A+: baselines)
+Tool 1: get_market_snapshot  → GET /market/snapshot     (Approach A: no AI)
+Tool 2: explain_grid_conditions → GET /market/explain   (Approach B: LLM synthesis)
+Tool 3: is_price_unusual     → GET /market/price-analysis (Approach A+: baselines)
 """
 
 import json
 import logging
 
-import azure.functions as func
+from fastapi import APIRouter, Header, Query
+from fastapi.responses import JSONResponse
 
 from services import grid_data
 from services.baselines import analyze_price
@@ -17,17 +18,21 @@ from services.weather import get_weather
 
 logger = logging.getLogger(__name__)
 
-bp = func.Blueprint()
+router = APIRouter()
 
 
 # ---------------------------------------------------------------------------
 # Tool 1: Market Snapshot (Approach A — No AI)
 # ---------------------------------------------------------------------------
 
-@bp.route(route="market/snapshot", methods=["GET"])
-async def market_snapshot(req: func.HttpRequest) -> func.HttpResponse:
+@router.get("/market/snapshot")
+async def market_snapshot(
+    iso: str = Query("CAISO"),
+    x_gridstatus_api_key: str | None = Header(None, alias="X-GridStatus-API-Key"),
+):
     """Current market conditions with rule-based highlights. No LLM."""
-    iso = req.params.get("iso", "CAISO").upper()
+    iso = iso.upper()
+    _api_key = x_gridstatus_api_key  # Available for hosted API migration
 
     try:
         fuel_mix = grid_data.get_fuel_mix(iso)
@@ -61,13 +66,9 @@ async def market_snapshot(req: func.HttpRequest) -> func.HttpResponse:
         }
     except Exception as e:
         logger.exception("Market snapshot failed")
-        return func.HttpResponse(
-            json.dumps({"error": str(e)}),
-            mimetype="application/json",
-            status_code=500,
-        )
+        return JSONResponse({"error": str(e)}, status_code=500)
 
-    return func.HttpResponse(json.dumps(result), mimetype="application/json")
+    return result
 
 
 def _generate_highlights(fuel_mix: dict, load: dict, prices: dict) -> list[str]:
@@ -128,11 +129,13 @@ def _generate_highlights(fuel_mix: dict, load: dict, prices: dict) -> list[str]:
 # Tool 2: Explain Grid Conditions (Approach B — LLM Synthesis)
 # ---------------------------------------------------------------------------
 
-@bp.route(route="market/explain", methods=["GET"])
-async def explain_conditions(req: func.HttpRequest) -> func.HttpResponse:
+@router.get("/market/explain")
+async def explain_conditions(
+    iso: str = Query("CAISO"),
+    focus: str = Query("general"),
+):
     """AI-synthesized explanation of current grid conditions."""
-    iso = req.params.get("iso", "CAISO").upper()
-    focus = req.params.get("focus", "general")
+    iso = iso.upper()
 
     try:
         fuel_mix = grid_data.get_fuel_mix(iso)
@@ -169,7 +172,7 @@ async def explain_conditions(req: func.HttpRequest) -> func.HttpResponse:
             "}"
         )
 
-        ai_response = await complete(
+        ai_response = complete(
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": data_context},
@@ -181,7 +184,6 @@ async def explain_conditions(req: func.HttpRequest) -> func.HttpResponse:
         try:
             parsed = json.loads(ai_response)
         except json.JSONDecodeError:
-            # If LLM didn't return valid JSON, wrap the text
             parsed = {
                 "explanation": ai_response.strip(),
                 "contributing_factors": [],
@@ -208,23 +210,19 @@ async def explain_conditions(req: func.HttpRequest) -> func.HttpResponse:
 
     except Exception as e:
         logger.exception("Explain conditions failed")
-        return func.HttpResponse(
-            json.dumps({"error": str(e)}),
-            mimetype="application/json",
-            status_code=500,
-        )
+        return JSONResponse({"error": str(e)}, status_code=500)
 
-    return func.HttpResponse(json.dumps(result), mimetype="application/json")
+    return result
 
 
 # ---------------------------------------------------------------------------
 # Tool 3: Is Price Unusual (Approach A+ — Deterministic Baselines)
 # ---------------------------------------------------------------------------
 
-@bp.route(route="market/price-analysis", methods=["GET"])
-async def price_analysis(req: func.HttpRequest) -> func.HttpResponse:
+@router.get("/market/price-analysis")
+async def price_analysis(iso: str = Query("CAISO")):
     """Statistical price analysis against historical baselines. No LLM."""
-    iso = req.params.get("iso", "CAISO").upper()
+    iso = iso.upper()
 
     try:
         prices = grid_data.get_prices(iso)
@@ -237,10 +235,6 @@ async def price_analysis(req: func.HttpRequest) -> func.HttpResponse:
 
     except Exception as e:
         logger.exception("Price analysis failed")
-        return func.HttpResponse(
-            json.dumps({"error": str(e)}),
-            mimetype="application/json",
-            status_code=500,
-        )
+        return JSONResponse({"error": str(e)}, status_code=500)
 
-    return func.HttpResponse(json.dumps(analysis), mimetype="application/json")
+    return analysis

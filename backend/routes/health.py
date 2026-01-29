@@ -1,24 +1,24 @@
 """Health check route with Foundry connectivity test."""
 
-import json
 import logging
 
-import azure.functions as func
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 
 from services.foundry_client import complete
 
 logger = logging.getLogger(__name__)
 
-bp = func.Blueprint()
+router = APIRouter()
 
 
-@bp.route(route="health", methods=["GET"])
-async def health(req: func.HttpRequest) -> func.HttpResponse:
+@router.get("/health")
+async def health():
     """Health check that verifies Foundry model connectivity."""
-    result = {"status": "ok", "ai": "not_tested"}
+    result = {"status": "ok", "service": "gridstatus-api", "ai": "not_tested"}
 
     try:
-        response = await complete(
+        response = complete(
             messages=[{"role": "user", "content": "Say 'hello' and nothing else."}],
             max_tokens=10,
         )
@@ -29,7 +29,4 @@ async def health(req: func.HttpRequest) -> func.HttpResponse:
         result["ai"] = "error"
         result["ai_error"] = str(e)
 
-    return func.HttpResponse(
-        json.dumps(result),
-        mimetype="application/json",
-    )
+    return result

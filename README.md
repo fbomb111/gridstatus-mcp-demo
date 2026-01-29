@@ -10,7 +10,7 @@ Four layers connect a user's question to live grid data:
 
 2. **MCP Server** (TypeScript, this repo) — the protocol bridge. Translates MCP tool calls into REST API requests to the backend. Also serves static resources (CAISO overview) and prompt templates (grid briefing, price investigation) directly — no backend call needed.
 
-3. **Backend API** (Python, Azure Function App) — the data layer. Fetches live grid data from gridstatus.io, weather from Open-Meteo, computes statistical baselines, and calls Azure OpenAI when AI synthesis is needed.
+3. **Backend API** (Python, FastAPI) — the data layer. Fetches live grid data from gridstatus.io, weather from Open-Meteo, computes statistical baselines, and calls Azure OpenAI when AI synthesis is needed.
 
 4. **External services** — [gridstatus.io](https://gridstatus.io) for real-time CAISO data, [Open-Meteo](https://open-meteo.com) for weather, Azure OpenAI for LLM synthesis.
 
@@ -72,7 +72,7 @@ sequenceDiagram
 ## Project Structure
 
 ```
-backend/          Azure Function App — REST API for grid data
+backend/          FastAPI API — REST API for grid data
   routes/         Market snapshot, price analysis, AI explanation endpoints
   services/       gridstatus SDK, weather, baselines, OpenAI, caching
 
@@ -86,23 +86,21 @@ mcp-server/       MCP server (TypeScript) — bridges Claude Desktop ↔ API
 
 - Node.js 18+
 - Python 3.11+
-- Azure Functions Core Tools (`func`)
 - A gridstatus.io API key
 - Azure OpenAI endpoint (for the explain tool)
 
 ## Setup
 
-### 1. Backend (Azure Function App)
+### 1. Backend (FastAPI)
 
 ```bash
 cd backend
-cp local.settings.example.json local.settings.json
-# Fill in GRIDSTATUS_API_KEY, AZURE_OPENAI_ENDPOINT, etc.
 pip install -r requirements.txt
-func start
+# Set env vars: AZURE_OPENAI_ENDPOINT, FOUNDRY_MODEL_DEPLOYMENT, MANAGED_IDENTITY_CLIENT_ID
+uvicorn app:app --reload --port 8000
 ```
 
-The API runs at `http://localhost:7071/api`.
+The API runs at `http://localhost:8000`.
 
 ### 2. MCP Server
 

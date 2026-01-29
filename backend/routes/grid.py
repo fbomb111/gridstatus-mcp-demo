@@ -3,24 +3,24 @@
 import json
 import logging
 
-import azure.functions as func
 import gridstatus
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 
 from services.foundry_client import complete
 
 logger = logging.getLogger(__name__)
 
-bp = func.Blueprint()
+router = APIRouter()
 
 
-@bp.route(route="grid/fuel-mix", methods=["GET"])
-async def fuel_mix(req: func.HttpRequest) -> func.HttpResponse:
+@router.get("/grid/fuel-mix")
+async def fuel_mix():
     """Fetch latest CAISO fuel mix and return an AI-generated summary."""
     try:
         caiso = gridstatus.CAISO()
         df = caiso.get_fuel_mix("latest")
 
-        # Build a simple dict of source → MW
         row = df.iloc[0]
         fuel_data = {
             col: int(row[col])
@@ -29,7 +29,7 @@ async def fuel_mix(req: func.HttpRequest) -> func.HttpResponse:
         }
         timestamp = str(row["Interval Start"])
 
-        ai_response = await complete(
+        ai_response = complete(
             messages=[
                 {
                     "role": "system",
@@ -58,9 +58,6 @@ async def fuel_mix(req: func.HttpRequest) -> func.HttpResponse:
 
     except Exception as e:
         logger.exception("Fuel mix endpoint failed")
-        result = {"error": str(e)}
-        return func.HttpResponse(
-            json.dumps(result), mimetype="application/json", status_code=500
-        )
+        return JSONResponse({"error": str(e)}, status_code=500)
 
-    return func.HttpResponse(json.dumps(result), mimetype="application/json")
+    return result

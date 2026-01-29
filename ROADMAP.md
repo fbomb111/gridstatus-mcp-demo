@@ -2,7 +2,7 @@
 
 ## Completed
 
-- [x] **Phase 1-2**: Backend API (Azure Function App) with 3 endpoints
+- [x] **Phase 1-2**: Backend API (FastAPI) with 3 endpoints
 - [x] **Phase 3**: MCP server with hello world tool
 - [x] **Phase 4**: Full MCP protocol showcase (tools, resources, prompts, logging, progress, annotations, completions, notifications, dual transport)
 - [x] **Repo setup**: Standalone repo, auto-update `start.sh`, README with architecture docs
@@ -35,13 +35,13 @@ Deploy as a fully remote service so users don't need to install anything locally
 - Functions: MCP Streamable HTTP needs in-memory session state. Functions are stateless.
 - App Service: Doesn't scale to zero — pays for idle compute.
 
-**GitHub Actions** (`.github/workflows/deploy.yml`):
+**GitHub Actions** (`.github/workflows/deploy.yaml`):
 - On push to main: build TypeScript → run tests → build Docker image → push to ACR → deploy to Container App
 - For local/stdio users: `start.sh` already auto-updates via `git pull` on connect
 
 **Container structure**:
 - `Dockerfile` in `mcp-server/` — Node.js image, copies dist/, runs `node dist/http.js`
-- Backend API deployed as separate Container App (Python + Azure Functions runtime)
+- Backend API deployed as separate Container App (Python + FastAPI/uvicorn)
 
 ## Phase 7: OAuth 2.1 (User Brings Their Own API Key)
 

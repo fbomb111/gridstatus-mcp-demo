@@ -1,7 +1,9 @@
-azure-functions
+fastapi
+uvicorn[standard]
 azure-identity
 openai
 httpx
 pydantic
 gridstatus
 pytz
+tzdata

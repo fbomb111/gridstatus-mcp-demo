@@ -12,7 +12,7 @@ import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mc
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 
-const API_BASE = process.env.GRIDSTATUS_API_URL || "http://localhost:7071/api";
+const API_BASE = process.env.GRIDSTATUS_API_URL || "http://localhost:8000";
 
 const server = new McpServer({
   name: "gridstatus",

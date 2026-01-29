@@ -1,0 +1,133 @@
+name: Deploy GridStatus MCP Demo
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-gridstatus
+  cancel-in-progress: true
+
+env:
+  RESOURCE_GROUP: rg-gridstatus-demo
+  ACR: prgptacr
+  AZURE_MSI_CLIENT_ID: a778803b-b814-42dd-8c82-e2778c9d98c4
+
+jobs:
+  deploy-api:
+    runs-on: [self-hosted, Linux, X64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login (Managed Identity)
+        run: |
+          az login --identity --client-id ${{ env.AZURE_MSI_CLIENT_ID }}
+
+      - name: Login to ACR
+        run: az acr login --name ${{ env.ACR }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Compute build metadata
+        run: |
+          echo "IMAGE_TAG=${GITHUB_SHA:0:7}" >> $GITHUB_ENV
+
+      - name: Build and Push API image
+        run: |
+          docker buildx build \
+            --file backend/Dockerfile \
+            --tag ${{ env.ACR }}.azurecr.io/gridstatus-api:${{ env.IMAGE_TAG }} \
+            --tag ${{ env.ACR }}.azurecr.io/gridstatus-api:latest \
+            --push \
+            backend/
+
+      - name: Deploy API to Container App
+        run: |
+          az containerapp update \
+            --name ca-gridstatus-api \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image ${{ env.ACR }}.azurecr.io/gridstatus-api:${{ env.IMAGE_TAG }}
+
+      - name: Wait for API health
+        run: |
+          FQDN=$(az containerapp show \
+            --name ca-gridstatus-api \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query "properties.configuration.ingress.fqdn" -o tsv)
+          HEALTH_URL="https://${FQDN}/health"
+          echo "Waiting for $HEALTH_URL..."
+
+          for i in {1..30}; do
+            if curl -sf "$HEALTH_URL" > /dev/null 2>&1; then
+              echo "API is healthy!"
+              exit 0
+            fi
+            echo "Attempt $i/30 - waiting 10s..."
+            sleep 10
+          done
+
+          echo "API did not become healthy in time"
+          exit 1
+
+  deploy-mcp:
+    runs-on: [self-hosted, Linux, X64]
+    needs: deploy-api
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login (Managed Identity)
+        run: |
+          az login --identity --client-id ${{ env.AZURE_MSI_CLIENT_ID }}
+
+      - name: Login to ACR
+        run: az acr login --name ${{ env.ACR }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Compute build metadata
+        run: |
+          echo "IMAGE_TAG=${GITHUB_SHA:0:7}" >> $GITHUB_ENV
+
+      - name: Build and Push MCP image
+        run: |
+          docker buildx build \
+            --file mcp-server/Dockerfile \
+            --tag ${{ env.ACR }}.azurecr.io/gridstatus-mcp:${{ env.IMAGE_TAG }} \
+            --tag ${{ env.ACR }}.azurecr.io/gridstatus-mcp:latest \
+            --push \
+            mcp-server/
+
+      - name: Deploy MCP to Container App
+        run: |
+          az containerapp update \
+            --name ca-gridstatus-mcp \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image ${{ env.ACR }}.azurecr.io/gridstatus-mcp:${{ env.IMAGE_TAG }}
+
+      - name: Wait for MCP health
+        run: |
+          FQDN=$(az containerapp show \
+            --name ca-gridstatus-mcp \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query "properties.configuration.ingress.fqdn" -o tsv)
+          HEALTH_URL="https://${FQDN}/health"
+          echo "Waiting for $HEALTH_URL..."
+
+          for i in {1..30}; do
+            if curl -sf "$HEALTH_URL" > /dev/null 2>&1; then
+              echo "MCP server is healthy!"
+              # Also verify OAuth metadata
+              curl -s "https://${FQDN}/.well-known/oauth-protected-resource" | python3 -m json.tool
+              exit 0
+            fi
+            echo "Attempt $i/30 - waiting 10s..."
+            sleep 10
+          done
+
+          echo "MCP server did not become healthy in time"
+          exit 1

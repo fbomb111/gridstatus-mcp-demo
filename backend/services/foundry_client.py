@@ -51,7 +51,7 @@ def _get_client() -> OpenAI:
     )
 
 
-async def complete(
+def complete(
     messages: list[dict],
     temperature: float = 0.7,
     max_tokens: int = 1000,

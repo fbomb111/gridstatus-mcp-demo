@@ -1,37 +1,70 @@
 /**
- * GridStatus MCP Server — Streamable HTTP Transport
+ * GridStatus MCP Server — Streamable HTTP Transport with OAuth 2.1
  *
- * Same data layer as index.ts (stdio), but served over HTTP.
- * Demonstrates transport layer independence: the same MCP primitives
- * (tools, resources, prompts) work identically over both stdio and HTTP.
+ * Serves the MCP protocol over HTTP with full OAuth authorization.
+ * Users authenticate by providing their gridstatus.io API key via
+ * a browser-based OAuth flow. The key is encrypted into an access
+ * token and forwarded to the backend on each request.
+ *
+ * OAuth endpoints:
+ *   GET  /.well-known/oauth-protected-resource  (RFC 9728)
+ *   GET  /.well-known/oauth-authorization-server (RFC 8414)
+ *   POST /oauth/register                        (RFC 7591 - Dynamic Client Registration)
+ *   GET  /oauth/authorize                       (show form)
+ *   POST /oauth/authorize                       (submit API key)
+ *   POST /oauth/token                           (code exchange / refresh)
+ *
+ * MCP endpoint:
+ *   POST/GET/DELETE /mcp                        (Streamable HTTP transport)
  *
  * Usage:
- *   node build/http.js
- *   # Server listens on http://localhost:3000/mcp
- *
- * Test with MCP Inspector or curl:
- *   curl -X POST http://localhost:3000/mcp \
- *     -H "Content-Type: application/json" \
- *     -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"curl","version":"1.0"}}}'
+ *   node dist/http.js
+ *   # Server listens on http://localhost:3000
  */
 
-import { createServer } from "node:http";
+import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { OAuthServer } from "./auth/oauth-server.js";
 
-const API_BASE = process.env.GRIDSTATUS_API_URL || "http://localhost:7071/api";
+const API_BASE = process.env.GRIDSTATUS_API_URL || "http://localhost:8000";
 const PORT = parseInt(process.env.MCP_HTTP_PORT || "3000", 10);
+const ISSUER = process.env.MCP_ISSUER || `http://localhost:${PORT}`;
+const TOKEN_SECRET = process.env.MCP_TOKEN_SECRET || "dev-secret-change-in-production";
+const REQUIRE_AUTH = process.env.MCP_REQUIRE_AUTH !== "false"; // default: true
 
-// Create a fresh server instance (separate from stdio instance)
-const server = new McpServer({
-  name: "gridstatus",
-  version: "0.3.0",
+// --- OAuth Server ---
+
+const oauth = new OAuthServer({
+  issuer: ISSUER,
+  tokenSecret: TOKEN_SECRET,
 });
 
-// --- Register the same primitives as index.ts ---
+// --- MCP Server ---
 
-// Static resource
+const server = new McpServer({
+  name: "gridstatus",
+  version: "0.4.0",
+});
+
+// Helper: fetch from backend, optionally forwarding the user's API key
+async function apiFetch(path: string, apiKey?: string): Promise<Response> {
+  const headers: Record<string, string> = {};
+  if (apiKey) {
+    headers["X-GridStatus-API-Key"] = apiKey;
+  }
+  return fetch(`${API_BASE}${path}`, { headers });
+}
+
+// We'll store the current request's API key in an AsyncLocalStorage-like pattern.
+// Since MCP SDK doesn't pass request context to tool handlers, we use a module-level
+// variable set by the middleware before each request. This works because Node.js
+// processes one request at a time per transport instance.
+let currentApiKey: string | undefined;
+
+// --- Resources ---
+
 server.registerResource(
   "caiso_overview",
   "gridstatus://caiso/overview",
@@ -45,13 +78,30 @@ server.registerResource(
       {
         uri: "gridstatus://caiso/overview",
         mimeType: "text/plain",
-        text: "California ISO (CAISO) manages 80% of California's grid, serving ~30M people. See stdio server for full overview.",
+        text: [
+          "California ISO (CAISO) manages ~80% of California's electricity grid, serving ~30 million people.",
+          "",
+          "Key facts:",
+          "- Covers most of California plus small parts of Nevada",
+          "- Three main trading hubs: NP15 (north), SP15 (south), ZP26 (central)",
+          "- Peak demand: ~45-52 GW in summer",
+          "- Significant solar (duck curve) and growing battery storage",
+          "- Typical price range: $20-80/MWh, with spikes >$200 during heat events",
+          "- Peak hours: 4-9 PM (after solar drops, before wind ramps)",
+          "",
+          "Data available via this server:",
+          "- Real-time fuel mix (solar, wind, gas, nuclear, hydro, batteries, imports)",
+          "- Current load (demand) in MW",
+          "- LMP prices at three trading hubs (5-min real-time market)",
+          "- Grid status alerts (normal, restricted, emergency)",
+          "- Weather conditions at major load centers (Sacramento, LA, SF)",
+          "- Historical price baselines for anomaly detection",
+        ].join("\n"),
       },
     ],
   })
 );
 
-// Dynamic resource template
 server.registerResource(
   "live_conditions",
   new ResourceTemplate("gridstatus://{iso}/conditions", {
@@ -72,7 +122,7 @@ server.registerResource(
     mimeType: "text/plain",
   },
   async (uri, { iso }) => {
-    const resp = await fetch(`${API_BASE}/market/snapshot?iso=${iso}`);
+    const resp = await apiFetch(`/market/snapshot?iso=${iso}`, currentApiKey);
     const data = resp.ok ? await resp.json() : { _summary: `Error: ${resp.status}` };
     return {
       contents: [{ uri: uri.href, mimeType: "text/plain", text: data._summary }],
@@ -80,81 +130,159 @@ server.registerResource(
   }
 );
 
-// Tools (all three registered immediately for HTTP — no delayed registration demo)
+// --- Tools ---
+
 server.registerTool("get_market_snapshot", {
   title: "Market Snapshot",
-  description: "Get current market conditions for an ISO.",
+  description:
+    "Get current electricity market conditions: prices, load, generation mix, and grid status. " +
+    "Returns rule-based highlights (no AI). " +
+    "If prices look unusual, follow up with is_price_unusual for statistical context.",
   inputSchema: { iso: z.enum(["CAISO"]).default("CAISO") },
   annotations: { title: "Market Snapshot", readOnlyHint: true, openWorldHint: true },
 }, async ({ iso }) => {
-  const resp = await fetch(`${API_BASE}/market/snapshot?iso=${iso}`);
+  const resp = await apiFetch(`/market/snapshot?iso=${iso}`, currentApiKey);
   if (!resp.ok) return { content: [{ type: "text" as const, text: `Error: ${resp.status}` }], isError: true };
   const data = await resp.json();
-  return { content: [{ type: "text" as const, text: data._summary }, { type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+  return {
+    content: [
+      { type: "text" as const, text: data._summary },
+      { type: "text" as const, text: JSON.stringify(data, null, 2) },
+    ],
+  };
 });
 
 server.registerTool("explain_grid_conditions", {
   title: "Explain Grid Conditions",
-  description: "AI-synthesized explanation of current grid conditions.",
+  description:
+    "AI-synthesized explanation of what's driving current grid conditions. " +
+    "Combines grid data + weather → Azure OpenAI for analyst-grade explanation. " +
+    "Use after get_market_snapshot when you need the 'why' behind the numbers.",
   inputSchema: {
     iso: z.enum(["CAISO"]).default("CAISO"),
     focus: z.enum(["general", "prices", "reliability", "renewables"]).default("general"),
   },
   annotations: { title: "Explain Conditions", readOnlyHint: true, openWorldHint: true },
 }, async ({ iso, focus }) => {
-  const resp = await fetch(`${API_BASE}/market/explain?iso=${iso}&focus=${focus}`);
+  const resp = await apiFetch(`/market/explain?iso=${iso}&focus=${focus}`, currentApiKey);
   if (!resp.ok) return { content: [{ type: "text" as const, text: `Error: ${resp.status}` }], isError: true };
   const data = await resp.json();
-  return { content: [{ type: "text" as const, text: data._summary }, { type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+  return {
+    content: [
+      { type: "text" as const, text: data._summary },
+      { type: "text" as const, text: JSON.stringify(data, null, 2) },
+    ],
+  };
 });
 
 server.registerTool("is_price_unusual", {
   title: "Price Analysis",
-  description: "Statistical price analysis against historical baselines.",
+  description:
+    "Statistical price analysis: compares current LMP against hourly baselines and 7-day rolling stats. " +
+    "Returns sigma (std devs from mean), percentile, severity, and a plain-language verdict. " +
+    "Deterministic — no AI. Use after get_market_snapshot to contextualize prices.",
   inputSchema: { iso: z.enum(["CAISO"]).default("CAISO") },
   annotations: { title: "Price Analysis", readOnlyHint: true, openWorldHint: true },
 }, async ({ iso }) => {
-  const resp = await fetch(`${API_BASE}/market/price-analysis?iso=${iso}`);
+  const resp = await apiFetch(`/market/price-analysis?iso=${iso}`, currentApiKey);
   if (!resp.ok) return { content: [{ type: "text" as const, text: `Error: ${resp.status}` }], isError: true };
   const data = await resp.json();
-  return { content: [{ type: "text" as const, text: data._summary }, { type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+  return {
+    content: [
+      { type: "text" as const, text: data._summary },
+      { type: "text" as const, text: JSON.stringify(data, null, 2) },
+    ],
+  };
 });
 
-// Prompts
+// --- Prompts ---
+
 server.registerPrompt("grid_briefing", {
   title: "Grid Briefing",
-  description: "Comprehensive California grid briefing.",
+  description: "Comprehensive California grid briefing — chains all tools automatically.",
 }, async () => ({
   messages: [{
     role: "user" as const,
-    content: { type: "text" as const, text: "Give me a current briefing on the California electricity grid. Get the snapshot, check if price is unusual, and explain if needed." },
+    content: {
+      type: "text" as const,
+      text: "Give me a current briefing on the California electricity grid. Get the market snapshot, check if the price is unusual, and if anything stands out, explain what's driving conditions.",
+    },
   }],
 }));
 
-// --- HTTP Server ---
+server.registerPrompt("investigate_price", {
+  title: "Investigate Price",
+  description: "Structured price investigation for a specific ISO.",
+  argsSchema: {
+    iso: z.string().default("CAISO").describe("ISO to investigate (e.g., CAISO)"),
+  },
+}, async ({ iso }) => ({
+  messages: [
+    {
+      role: "user" as const,
+      content: {
+        type: "text" as const,
+        text: `Investigate electricity prices for ${iso}. First get the market snapshot, then check if the price is unusual. If it's unusual (sigma > 1.5), explain what's driving conditions. If it's normal, give a brief summary of current grid state.`,
+      },
+    },
+  ],
+}));
+
+// --- HTTP Server with OAuth ---
 
 async function main() {
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
 
-  const httpServer = createServer(async (req, res) => {
-    if (req.url === "/mcp" && req.method === "POST") {
+  const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
+    const url = new URL(req.url || "/", ISSUER);
+
+    // OAuth routes (always available, no auth required)
+    const handled = await oauth.handleRequest(req, res);
+    if (handled) return;
+
+    // MCP routes — require auth if enabled
+    if (url.pathname === "/mcp") {
+      if (REQUIRE_AUTH) {
+        const apiKey = oauth.validateBearerToken(req.headers.authorization);
+        if (!apiKey) {
+          // RFC 9728: include resource_metadata URL in WWW-Authenticate
+          res.writeHead(401, {
+            "WWW-Authenticate": `Bearer resource_metadata="${ISSUER}/.well-known/oauth-protected-resource"`,
+            "Content-Type": "application/json",
+          });
+          res.end(JSON.stringify({ error: "unauthorized", error_description: "Valid Bearer token required" }));
+          return;
+        }
+        currentApiKey = apiKey;
+      }
+
       await transport.handleRequest(req, res);
-    } else if (req.url === "/mcp" && req.method === "GET") {
-      // SSE endpoint for server-to-client notifications
-      await transport.handleRequest(req, res);
-    } else if (req.url === "/mcp" && req.method === "DELETE") {
-      await transport.handleRequest(req, res);
-    } else {
-      res.writeHead(404);
-      res.end(JSON.stringify({ error: "Not found. Use POST /mcp for MCP requests." }));
+      return;
     }
+
+    // Health check
+    if (url.pathname === "/health" && req.method === "GET") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "ok", version: "0.4.0", auth: REQUIRE_AUTH }));
+      return;
+    }
+
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Not found" }));
   });
 
   await server.connect(transport);
 
   httpServer.listen(PORT, () => {
-    console.error(`GridStatus MCP HTTP server listening on http://localhost:${PORT}/mcp`);
-    console.error("Transport: Streamable HTTP (POST /mcp for requests, GET /mcp for SSE)");
+    console.error(`GridStatus MCP HTTP server v0.4.0`);
+    console.error(`  MCP endpoint: ${ISSUER}/mcp`);
+    console.error(`  OAuth:        ${REQUIRE_AUTH ? "enabled" : "disabled"}`);
+    console.error(`  Health:       ${ISSUER}/health`);
+    if (REQUIRE_AUTH) {
+      console.error(`  Metadata:     ${ISSUER}/.well-known/oauth-protected-resource`);
+      console.error(`  Register:     POST ${ISSUER}/oauth/register`);
+      console.error(`  Authorize:    ${ISSUER}/oauth/authorize`);
+    }
   });
 }
 

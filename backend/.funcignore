@@ -1,7 +1,0 @@
-.venv/
-__pycache__/
-.git/
-local.settings.json
-*.pyc
-docs/
-.pytest_cache/
