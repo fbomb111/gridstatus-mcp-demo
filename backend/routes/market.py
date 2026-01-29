@@ -180,10 +180,13 @@ async def explain_conditions(
             max_tokens=800,
         )
 
-        # Parse the JSON response from the LLM
+        # Parse the JSON response from the LLM (strip markdown fences if present)
         try:
-            parsed = json.loads(ai_response)
-        except json.JSONDecodeError:
+            clean = ai_response.strip()
+            if clean.startswith("```"):
+                clean = clean.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+            parsed = json.loads(clean)
+        except (json.JSONDecodeError, IndexError):
             parsed = {
                 "explanation": ai_response.strip(),
                 "contributing_factors": [],
