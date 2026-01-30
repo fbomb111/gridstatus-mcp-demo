@@ -114,17 +114,38 @@ npm run build
 
 Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
+**Option A: Remote server (production — OAuth enabled)**
+
+Connects to the deployed MCP server over HTTPS. Claude Desktop will open a browser for you to paste your gridstatus.io API key via OAuth.
+
 ```json
 {
   "mcpServers": {
     "gridstatus": {
-      "command": "/absolute/path/to/gridstatus-demo/mcp-server/start.sh"
+      "url": "https://ca-gridstatus-mcp.blacksmoke-21433aca.eastus2.azurecontainerapps.io/mcp"
     }
   }
 }
 ```
 
-The `start.sh` wrapper auto-pulls and rebuilds on every Claude Desktop connect, so you never need to manually rebuild after pushing changes.
+**Option B: Local stdio (dev — no OAuth)**
+
+Runs the MCP server locally from your checkout. `start.sh` auto-pulls and rebuilds on every Claude Desktop connect. Set `GRIDSTATUS_API_URL` to the remote backend (or omit it to use `localhost:8000` if running the backend locally).
+
+```json
+{
+  "mcpServers": {
+    "gridstatus-dev": {
+      "command": "/absolute/path/to/gridstatus-demo/mcp-server/start.sh",
+      "env": {
+        "GRIDSTATUS_API_URL": "https://ca-gridstatus-api.blacksmoke-21433aca.eastus2.azurecontainerapps.io"
+      }
+    }
+  }
+}
+```
+
+**Using both:** You can add both configs side by side. Claude Desktop will show them as separate connectors — `gridstatus` for production and `gridstatus-dev` for local iteration.
 
 Restart Claude Desktop after editing the config.
 
