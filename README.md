@@ -161,6 +161,9 @@ Click the "+" icon in Claude Desktop → "Add from gridstatus" to see 4 options:
 **Investigate Price** (takes ISO arg):
 > Click it, enter "CAISO". Claude follows a structured investigation: check price → if unusual, explain why → if normal, summarize conditions.
 
+**GridStatus Tutorial** (no args):
+> Click it. Claude walks you through an interactive tour of all features — live data, price analysis, AI explanation, authentication, and more. Pauses between steps so you can try each tool yourself.
+
 ### 2. Resources (App-Controlled Context)
 
 - **CAISO Grid Overview** — static reference data (price patterns, trading hubs, grid facts)
@@ -233,7 +236,7 @@ Same tools, resources, and prompts over HTTP instead of stdio.
 |------------|---------------|--------|
 | Tools | 3 tools: no AI → baselines → LLM synthesis | Working |
 | Resources | Static overview + live dynamic template | Working |
-| Prompts | Zero-arg briefing + parameterized investigation | Working |
+| Prompts | 3 prompts: briefing, price investigation, interactive tutorial | Working |
 | Logging | Info/error messages during tool execution | Working |
 | Progress | 5-stage notifications on explain tool | Sent (host doesn't display yet) |
 | Annotations | readOnlyHint + openWorldHint on all tools | Working |
@@ -241,6 +244,7 @@ Same tools, resources, and prompts over HTTP instead of stdio.
 | Notifications | Delayed tool registration + list_changed | Working |
 | Transport: stdio | Claude Desktop entry point | Working |
 | Transport: HTTP | Streamable HTTP on port 3000 | Working |
+| OAuth 2.1 | PKCE + Dynamic Client Registration + token encryption | Working |
 | Sampling | Server → client LLM request | Skipped (requires client support) |
 | Elicitation | Server → user input request | Skipped (2025-06-18 spec) |
 | Roots | Filesystem boundaries | Skipped (not relevant for grid data) |

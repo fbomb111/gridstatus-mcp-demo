@@ -138,24 +138,30 @@ Neither approach is universally better. The demo shows when to use which.
 
 ---
 
-## Open Questions (Next Steps)
+## Decisions Made (Resolved from Initial Planning)
 
-- Exact tool definitions and parameters
-- Baseline computation strategy (pre-compute vs on-demand)
-- Server-side LLM choice and cost management
-- Demo script: what conversation flow best showcases the value?
-- Hosting architecture details
+| Question | Resolution |
+|----------|-----------|
+| Tool definitions and parameters | 3 tools: `get_market_snapshot`, `is_price_unusual`, `explain_grid_conditions` — all CAISO-only with optional `focus` param on explain |
+| Baseline computation | Hardcoded hourly baselines + rolling 7-day stats, computed on demand. No database. |
+| Server-side LLM | Azure OpenAI (gpt-4.1) via Managed Identity. Used only for explain tool. ~$0 at demo scale. |
+| Demo script | Interactive tutorial prompt built into the MCP server itself — user selects it from Claude Desktop's "+" menu |
+| Hosting | Azure Container Apps (scale to zero). Custom OAuth 2.1 for remote access. |
+| ISO coverage | CAISO only. Original plan included ERCOT and PJM — cut for depth over breadth. One ISO done well demonstrates the pattern; adding more is trivial. |
 
 ---
 
-## Artifacts
+## Documentation
 
-| Document               | Purpose                                                                |
-| ---------------------- | ---------------------------------------------------------------------- |
-| Design Process Doc     | Shows reasoning journey, how we arrived at decisions                   |
-| MCP Decision Framework | Abstracted guidance on when to use MCP (shareable beyond this project) |
-| This Product Doc       | High-level objectives and approach                                     |
-| (Next) Technical Spec  | Detailed tool definitions, architecture, implementation plan           |
+| Document | Purpose |
+|----------|---------|
+| `README.md` | Setup, demo script, capability coverage — the "what is it now" doc |
+| `docs/architecture.md` | System diagrams, data flows, infrastructure, environment variables |
+| `docs/product_spec.md` | This file — product thesis and design principles |
+| `docs/technical_spec.md` | Tool schemas, backend endpoints, infrastructure details |
+| `docs/grid_status_design_spec_phase_1.md` | Design reasoning — 10 threads showing how we arrived at the A/B framework |
+| `docs/grid_status_design_spec_phase_2.md` | Architecture decisions — what we built, what we cut, and why |
+| `docs/grid_status_design_spec_phase_3.md` | Implementation journal — the actual build process, debugging, and learnings |
 
 ---
 

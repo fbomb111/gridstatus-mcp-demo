@@ -68,7 +68,7 @@ The protocol bridge between Claude and the backend API. Implements the full MCP 
 |-----------|-------------|
 | **Tools** (3) | `get_market_snapshot`, `explain_grid_conditions`, `is_price_unusual` |
 | **Resources** (2) | Static CAISO overview, live conditions template |
-| **Prompts** (2) | Grid Briefing (zero-arg), Investigate Price (parameterized) |
+| **Prompts** (3) | Grid Briefing (zero-arg), Investigate Price (parameterized), Tutorial (interactive walkthrough) |
 | **Logging** | Info/error messages during tool execution |
 | **Progress** | 5-stage progress on explain tool |
 | **Annotations** | `readOnlyHint`, `openWorldHint` on all tools |

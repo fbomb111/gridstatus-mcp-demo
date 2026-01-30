@@ -306,4 +306,15 @@ This is exactly the division of labor described in the Phase 1 design doc: serve
 
 ---
 
-_Last updated: 2026-01-28_
+---
+
+## What Changed After Phase 3
+
+This journal captures the Phase 3 "hello world" milestone. The project evolved significantly from here:
+
+- **Function App → plain FastAPI + uvicorn.** The Function App scaffolding (`function_app.py`, `host.json`, `local.settings.json`) was replaced with a standard FastAPI app deployed as a Docker container on Azure Container Apps. The endpoint saga documented above was real — but the infrastructure it ran on changed.
+- **`get_fuel_mix` → three market tools.** The hello-world endpoint still exists at `/grid/fuel-mix`, but the three main tools (`/market/snapshot`, `/market/price-analysis`, `/market/explain`) became the focus. Each demonstrates a different approach to server-side intelligence.
+- **MCP server: 30 lines → full protocol showcase.** What started as a thin tool proxy grew to implement resources, prompts, logging, progress notifications, annotations, completions, dynamic tool registration, dual transport (stdio + HTTP), and OAuth 2.1.
+- **The "Current State" section above reflects Phase 3 completion, not the final shipped state.** See `ROADMAP.md` for the full list of what was built.
+
+_Last updated: 2026-01-30_

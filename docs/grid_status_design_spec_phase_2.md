@@ -209,4 +209,20 @@ The demo isn't "I built an MCP server." It's "I can design AI systems that add r
 
 ---
 
-_Last updated: 2026-01-28_
+---
+
+## What Changed After This Phase
+
+Several decisions made here were later revised based on what we learned during implementation:
+
+**Function App → Container Apps.** Decision 5 chose Azure Function App for simplicity. We pivoted when building the Streamable HTTP transport — MCP HTTP needs in-memory session state (transport instances, OAuth state), and Functions are stateless. Container Apps scale to zero (same cost benefit) while maintaining instances during active connections.
+
+**3 ISOs → CAISO only.** Decision 8 planned CAISO, ERCOT, and PJM. We cut to CAISO-only for depth over breadth. CAISO has the richest data story (solar duck curve, battery charging, renewable curtailment). One ISO done well is more impressive than three done thin — and adding more is trivial architecturally.
+
+**"No authentication" → Full OAuth 2.1.** Decision "What We Cut" listed authentication as unnecessary. This became a major feature — the MCP spec requires OAuth 2.1 for remote HTTP transport, so we built a custom OAuth server that bridges OAuth with gridstatus API keys. It's now one of the strongest parts of the demo.
+
+**Infrastructure cost model changed.** Container Apps with scale-to-zero replaced the Function App Consumption plan. CI/CD via GitHub Actions with a self-hosted runner (instead of the planned `func azure functionapp publish`). Docker images tagged with both `latest` and commit SHA.
+
+_The decisions above reflect the thinking at architecture planning time. They're preserved as-is — the pivots are documented here rather than retroactively editing the original reasoning._
+
+_Last updated: 2026-01-30_

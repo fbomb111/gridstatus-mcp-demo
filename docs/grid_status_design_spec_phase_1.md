@@ -404,4 +404,16 @@ This demonstrates: data access, orchestration, deterministic logic, server synth
 
 ---
 
-_Document will be updated as design evolves._
+---
+
+## Epilogue: What Survived and What Changed
+
+The reasoning in this document held up well through implementation. Key outcomes:
+
+- **The A/B framework survived intact.** It became the core narrative of the demo — three tools showing a spectrum from "no AI" to "full LLM synthesis." This distinction resonated in every review.
+- **6 tools became 3.** The proposed set (list_isos, get_grid_snapshot, check_anomaly, compare_isos, explain_conditions, explain_anomaly) was consolidated: snapshot + price analysis + explain. Fewer tools, each more polished.
+- **`list_isos()` and `compare_isos()` were cut.** We scoped to CAISO only — depth over breadth. One ISO done well demonstrates the pattern; multi-ISO is just more of the same.
+- **MCP's value = reliability + discoverability** (Thread #5) proved exactly right. The real differentiator ended up being OAuth 2.1 and the "user brings their own key" pattern — operational value, not magical capability.
+- **Open questions were all resolved.** Tool definitions: see `technical_spec.md`. Baselines: hardcoded hourly + rolling 7-day. LLM: gpt-4.1 via Managed Identity. Demo script: built as an interactive tutorial prompt inside the MCP server itself. Hosting: Azure Container Apps.
+
+_The design reasoning above reflects the thinking process at project start. It's preserved as-is because the journey matters as much as the destination._
