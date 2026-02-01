@@ -144,4 +144,27 @@ export class TokenStore {
     // Issue new pair
     return this.issueTokens(stored.apiKey, stored.clientId);
   }
+
+  /** Remove expired refresh tokens to prevent memory leaks. */
+  cleanup(): number {
+    const now = Math.floor(Date.now() / 1000);
+    let removed = 0;
+    for (const [token, stored] of this.refreshTokens) {
+      if (stored.expiresAt < now) {
+        this.refreshTokens.delete(token);
+        removed++;
+      }
+    }
+    return removed;
+  }
+
+  /** Start periodic cleanup of expired tokens. Returns the interval handle. */
+  startCleanupInterval(intervalMs = 3_600_000): NodeJS.Timeout {
+    return setInterval(() => {
+      const removed = this.cleanup();
+      if (removed > 0) {
+        console.error(`Token cleanup: removed ${removed} expired refresh token(s)`);
+      }
+    }, intervalMs);
+  }
 }

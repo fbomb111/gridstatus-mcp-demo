@@ -96,7 +96,7 @@ mcp-server/       MCP server (TypeScript) — bridges Claude Desktop ↔ API
 ```bash
 cd backend
 pip install -r requirements.txt
-# Set env vars: AZURE_OPENAI_ENDPOINT, FOUNDRY_MODEL_DEPLOYMENT, MANAGED_IDENTITY_CLIENT_ID
+# Set env vars: FOUNDRY_ENDPOINT, FOUNDRY_MODEL_DEPLOYMENT, MANAGED_IDENTITY_CLIENT_ID
 uvicorn app:app --reload --port 8000
 ```
 
@@ -190,6 +190,11 @@ Triggers `is_price_unusual`. Returns sigma, percentile, severity, template verdi
 
 Triggers `explain_grid_conditions`. Returns multi-paragraph analyst explanation with contributing factors.
 
+**Tool 4 — Historical Grid Data (requires API key):**
+> "What were ERCOT prices last Tuesday?"
+
+Triggers `query_grid_history`. Only available after authenticating via OAuth (or setting `GRIDSTATUS_API_KEY` env var for stdio). Covers all US ISOs: CAISO, ERCOT, PJM, MISO, NYISO, ISONE, SPP.
+
 **Cross-tool chaining:**
 > "Give me a full grid analysis"
 
@@ -210,15 +215,11 @@ Check the MCP server logs:
 
 All tools declare `readOnlyHint: true` and `openWorldHint: true` — safe (read-only) but making external network calls. Visible in `tools/list` response.
 
-### 7. Dynamic Tool Registration
-
-On startup, only 2 tools are available. After 5 seconds, `explain_grid_conditions` registers and `tools/list_changed` fires. This simulates premium feature unlocking or lazy loading.
-
-### 8. Completions
+### 7. Completions
 
 The resource template `gridstatus://{iso}/conditions` supports autocomplete on `iso`, returning `["CAISO"]`.
 
-### 9. HTTP Transport
+### 8. HTTP Transport
 
 ```bash
 cd mcp-server && npm run start:http
@@ -234,18 +235,15 @@ Same tools, resources, and prompts over HTTP instead of stdio.
 
 | Capability | Implementation | Status |
 |------------|---------------|--------|
-| Tools | 3 tools: no AI → baselines → LLM synthesis | Working |
+| Tools | 3 public + 1 authenticated (unlocked after OAuth) | Working |
 | Resources | Static overview + live dynamic template | Working |
 | Prompts | 3 prompts: briefing, price investigation, interactive tutorial | Working |
 | Logging | Info/error messages during tool execution | Working |
 | Progress | 5-stage notifications on explain tool | Sent (host doesn't display yet) |
 | Annotations | readOnlyHint + openWorldHint on all tools | Working |
 | Completions | Autocomplete for resource template variables | Working |
-| Notifications | Delayed tool registration + list_changed | Working |
 | Transport: stdio | Claude Desktop entry point | Working |
 | Transport: HTTP | Streamable HTTP on port 3000 | Working |
 | OAuth 2.1 | PKCE + Dynamic Client Registration + token encryption | Working |
-| Sampling | Server → client LLM request | Skipped (requires client support) |
-| Elicitation | Server → user input request | Skipped (2025-06-18 spec) |
-| Roots | Filesystem boundaries | Skipped (not relevant for grid data) |
-| Tasks | Durable execution | Skipped (no client support yet) |
+
+Additional MCP primitives (notifications, sampling, elicitation, tasks) are documented in [Capabilities](docs/capabilities.md) — deferred until client support matures.

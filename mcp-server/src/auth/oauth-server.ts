@@ -52,6 +52,7 @@ export class OAuthServer {
   private tokenStore: TokenStore;
   private clients = new Map<string, RegisteredClient>();
   private authCodes = new Map<string, AuthorizationCode>();
+  private _onAuthenticated?: () => void;
 
   constructor(config: OAuthServerConfig) {
     this.issuer = config.issuer;
@@ -59,6 +60,11 @@ export class OAuthServer {
       secret: config.tokenSecret,
       ttlSeconds: config.tokenTtlSeconds,
     });
+  }
+
+  /** Register a callback to fire after the first successful token exchange. */
+  onAuthenticated(callback: () => void): void {
+    this._onAuthenticated = callback;
   }
 
   /**
@@ -313,6 +319,13 @@ export class OAuthServer {
       refresh_token: tokens.refreshToken,
       scope: "gridstatus",
     });
+
+    // Notify that authentication succeeded (triggers tool unlock)
+    if (this._onAuthenticated) {
+      this._onAuthenticated();
+      this._onAuthenticated = undefined; // Fire once
+    }
+
     return true;
   }
 
@@ -457,6 +470,25 @@ export class OAuthServer {
   </div>
 </body>
 </html>`;
+  }
+
+  /** Start periodic cleanup of expired tokens and auth codes. */
+  startTokenCleanup(): void {
+    this.tokenStore.startCleanupInterval();
+    // Also clean expired auth codes every 5 minutes
+    setInterval(() => {
+      const now = Math.floor(Date.now() / 1000);
+      let removed = 0;
+      for (const [code, authCode] of this.authCodes) {
+        if (authCode.expiresAt < now) {
+          this.authCodes.delete(code);
+          removed++;
+        }
+      }
+      if (removed > 0) {
+        console.error(`Auth code cleanup: removed ${removed} expired code(s)`);
+      }
+    }, 5 * 60_000);
   }
 
   private escapeHtml(str: string): string {

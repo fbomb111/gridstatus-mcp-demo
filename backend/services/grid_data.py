@@ -14,6 +14,7 @@ from services.cache import cache
 logger = logging.getLogger(__name__)
 
 # CAISO trading hubs for LMP queries
+# NP15 = Northern CA, SP15 = Southern CA, ZP26 = Central CA
 CAISO_HUBS = ["TH_NP15_GEN-APND", "TH_SP15_GEN-APND", "TH_ZP26_GEN-APND"]
 
 _isos = {
@@ -36,6 +37,8 @@ def get_fuel_mix(iso: str = "CAISO") -> dict:
 
     obj = _get_iso(iso)
     df = obj.get_fuel_mix("latest")
+    if df.empty:
+        raise ValueError(f"No fuel mix data returned from {iso}")
     row = df.iloc[0]
 
     result = {
@@ -58,6 +61,8 @@ def get_load(iso: str = "CAISO") -> dict:
 
     obj = _get_iso(iso)
     df = obj.get_load("latest")
+    if df.empty:
+        raise ValueError(f"No load data returned from {iso}")
     row = df.iloc[0]
 
     result = {
@@ -113,7 +118,7 @@ def get_status(iso: str = "CAISO") -> dict:
             "time": str(status.time),
         }
     except Exception as e:
-        logger.warning(f"Grid status unavailable: {e}")
+        logger.warning("Grid status unavailable: %s", e)
         result = {"status": "unavailable", "reserves": None, "time": None}
 
     cache.set(f"status:{iso}", result, ttl_seconds=60)
@@ -146,5 +151,5 @@ def get_historical_prices(
         cache.set(f"hist_prices:{iso}:{days}", df, ttl_seconds=3600)
         return df
     except Exception as e:
-        logger.warning(f"Historical price fetch failed: {e}")
+        logger.warning("Historical price fetch failed: %s", e)
         return None

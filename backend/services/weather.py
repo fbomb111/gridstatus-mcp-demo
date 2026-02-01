@@ -3,6 +3,7 @@
 Free API, no key required. Returns current conditions for ISO load centers.
 """
 
+import asyncio
 import logging
 
 import httpx
@@ -21,6 +22,37 @@ ISO_LOCATIONS = {
 }
 
 
+async def _fetch_location(
+    client: httpx.AsyncClient, lat: float, lon: float, name: str
+) -> dict | None:
+    """Fetch weather for a single location. Returns detail dict or None on failure."""
+    try:
+        resp = await client.get(
+            "https://api.open-meteo.com/v1/forecast",
+            params={
+                "latitude": lat,
+                "longitude": lon,
+                "current": "temperature_2m,wind_speed_10m,relative_humidity_2m",
+                "temperature_unit": "fahrenheit",
+                "wind_speed_unit": "mph",
+                "timezone": "auto",
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        current = data["current"]
+
+        return {
+            "location": name,
+            "temperature_f": current["temperature_2m"],
+            "wind_speed_mph": current["wind_speed_10m"],
+            "humidity_pct": current["relative_humidity_2m"],
+        }
+    except httpx.HTTPError as e:
+        logger.warning("Weather fetch failed for %s: %s", name, e)
+        return None
+
+
 async def get_weather(iso: str = "CAISO") -> dict:
     """Get current weather conditions for an ISO's load centers."""
     cached = cache.get(f"weather:{iso}")
@@ -31,42 +63,14 @@ async def get_weather(iso: str = "CAISO") -> dict:
     if not locations:
         return {"error": f"No weather locations configured for {iso}"}
 
-    temps = []
-    wind_speeds = []
-    details = []
-
     async with httpx.AsyncClient(timeout=10) as client:
-        for lat, lon, name in locations:
-            try:
-                resp = await client.get(
-                    "https://api.open-meteo.com/v1/forecast",
-                    params={
-                        "latitude": lat,
-                        "longitude": lon,
-                        "current": "temperature_2m,wind_speed_10m,relative_humidity_2m",
-                        "temperature_unit": "fahrenheit",
-                        "wind_speed_unit": "mph",
-                        "timezone": "auto",
-                    },
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                current = data["current"]
+        results = await asyncio.gather(
+            *[_fetch_location(client, lat, lon, name) for lat, lon, name in locations]
+        )
 
-                temp = current["temperature_2m"]
-                wind = current["wind_speed_10m"]
-                humidity = current["relative_humidity_2m"]
-
-                temps.append(temp)
-                wind_speeds.append(wind)
-                details.append({
-                    "location": name,
-                    "temperature_f": temp,
-                    "wind_speed_mph": wind,
-                    "humidity_pct": humidity,
-                })
-            except Exception as e:
-                logger.warning(f"Weather fetch failed for {name}: {e}")
+    details = [r for r in results if r is not None]
+    temps = [d["temperature_f"] for d in details]
+    wind_speeds = [d["wind_speed_mph"] for d in details]
 
     result = {
         "iso": iso,

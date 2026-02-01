@@ -12,10 +12,11 @@ Auth:
 """
 
 import logging
-import os
 
 from azure.identity import ManagedIdentityCredential
 from openai import OpenAI
+
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -24,12 +25,16 @@ FOUNDRY_AUTH_SCOPE = "https://cognitiveservices.azure.com/.default"
 _credential = None
 
 
+def validate_config() -> list[str]:
+    """Check that required env vars exist. Returns list of missing var names."""
+    return settings.validate()
+
+
 def _get_credential():
     """Get Azure credential via User-Assigned Managed Identity."""
-    client_id = os.getenv("MANAGED_IDENTITY_CLIENT_ID")
-    if not client_id:
+    if not settings.managed_identity_client_id:
         raise ValueError("MANAGED_IDENTITY_CLIENT_ID environment variable is required")
-    return ManagedIdentityCredential(client_id=client_id)
+    return ManagedIdentityCredential(client_id=settings.managed_identity_client_id)
 
 
 def _get_token() -> str:
@@ -42,11 +47,10 @@ def _get_token() -> str:
 
 def _get_client() -> OpenAI:
     """Build OpenAI client with MSI token and Foundry endpoint."""
-    endpoint = os.getenv("FOUNDRY_ENDPOINT")
-    if not endpoint:
+    if not settings.foundry_endpoint:
         raise ValueError("FOUNDRY_ENDPOINT environment variable is required")
     return OpenAI(
-        base_url=endpoint,
+        base_url=settings.foundry_endpoint,
         api_key=_get_token(),
     )
 
@@ -59,11 +63,10 @@ def complete(
     """
     Call Foundry model with chat messages, return assistant response text.
     """
-    model = os.getenv("FOUNDRY_MODEL_DEPLOYMENT", "gpt-4.1")
     client = _get_client()
 
     completion = client.chat.completions.create(
-        model=model,
+        model=settings.foundry_model,
         messages=messages,
         temperature=temperature,
         max_tokens=max_tokens,

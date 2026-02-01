@@ -79,7 +79,7 @@ def compute_rolling_baseline(iso: str, days: int = 7) -> dict | None:
             "description": f"Rolling {days}-day average across trading hubs",
         }
     except Exception as e:
-        logger.warning(f"Rolling baseline computation failed: {e}")
+        logger.warning("Rolling baseline computation failed: %s", e)
         return None
 
 
