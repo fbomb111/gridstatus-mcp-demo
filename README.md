@@ -116,15 +116,30 @@ npm run build
 
 ### 3. Connect to Claude Desktop
 
-**For users (remote server):**
+**Install the extension (recommended):**
 
-1. Open Claude Desktop → Settings → Connectors
-2. Click "Add custom connector"
-3. Paste the server URL: `https://ca-gridstatus-mcp.blacksmoke-21433aca.eastus2.azurecontainerapps.io/mcp`
-4. A sign-in form opens in your browser — enter your gridstatus.io API key, or click **"Skip for now"** to explore public tools first
-5. 3 tools are available immediately; a 4th premium tool unlocks when you sign in with a key
+1. Download `gridstatus.mcpb` from the [latest release](https://github.com/fbomb111/gridstatus-mcp-demo/releases)
+2. Double-click to install — Claude Desktop opens the extension installer
+3. When prompted for an API key, enter your gridstatus.io key or leave it blank to explore public tools first
+4. 3 tools work immediately; a 4th premium tool unlocks when you add a key
 
-**For developers (local stdio):**
+Your API key is stored securely in the OS keychain. To add or change it later: Settings → Extensions → GridStatus.
+
+**Build the extension from source:**
+
+```bash
+cd mcp-server
+bash scripts/build-mcpb.sh
+# Produces gridstatus.mcpb — double-click to install
+```
+
+**Alternative: Remote server via Connectors (OAuth):**
+
+1. Open Claude Desktop → Settings → Connectors → "Add custom connector"
+2. Paste: `https://ca-gridstatus-mcp.blacksmoke-21433aca.eastus2.azurecontainerapps.io/mcp`
+3. A sign-in form opens — enter your API key, or click "Skip for now"
+
+**Developer setup (local stdio):**
 
 Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
@@ -134,14 +149,14 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
     "gridstatus-dev": {
       "command": "/absolute/path/to/gridstatus-demo/mcp-server/start.sh",
       "env": {
-        "GRIDSTATUS_API_URL": "https://ca-gridstatus-api.blacksmoke-21433aca.eastus2.azurecontainerapps.io"
+        "GRIDSTATUS_API_KEY": "your-key-here"
       }
     }
   }
 }
 ```
 
-Set `GRIDSTATUS_API_KEY` in the `env` section to unlock the 4th tool locally. Restart Claude Desktop after editing the config.
+`start.sh` auto-pulls and rebuilds on every connect. Set `GRIDSTATUS_API_KEY` to unlock the 4th tool.
 
 ## Demo Script
 

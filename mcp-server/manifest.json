@@ -1,0 +1,86 @@
+{
+  "manifest_version": "0.3",
+  "name": "gridstatus",
+  "display_name": "GridStatus",
+  "version": "0.4.0",
+  "description": "Live California electricity grid data — prices, generation mix, demand, and AI-powered analysis. Explore the power grid through natural conversation.",
+  "long_description": "Connect Claude to the California power grid. Three tools work out of the box with live CAISO data: market snapshots, statistical price analysis, and AI-powered explanations that combine grid data with weather. Add a gridstatus.io API key to unlock historical data across all 7 US power markets.\n\nIncludes an interactive tutorial — select 'GridStatus Tutorial' from the + menu to get a guided walkthrough of everything.",
+  "author": {
+    "name": "GridStatus MCP Demo"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fbomb111/gridstatus-mcp-demo"
+  },
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/dist/index.js"],
+      "env": {
+        "GRIDSTATUS_API_URL": "https://ca-gridstatus-api.blacksmoke-21433aca.eastus2.azurecontainerapps.io",
+        "GRIDSTATUS_API_KEY": "${user_config.api_key}"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "get_market_snapshot",
+      "description": "Live electricity market conditions: prices, load, generation mix, and grid status"
+    },
+    {
+      "name": "is_price_unusual",
+      "description": "Statistical price analysis against hourly baselines and 7-day rolling stats"
+    },
+    {
+      "name": "explain_grid_conditions",
+      "description": "AI-powered explanation combining grid data and weather to explain current conditions"
+    },
+    {
+      "name": "query_grid_history",
+      "description": "Historical grid data across all 7 US power markets (requires API key)"
+    }
+  ],
+  "prompts": [
+    {
+      "name": "gridstatus_tutorial",
+      "description": "Interactive guided walkthrough of all GridStatus features. Start here!"
+    },
+    {
+      "name": "grid_briefing",
+      "description": "Comprehensive California grid briefing — chains all tools automatically"
+    },
+    {
+      "name": "investigate_price",
+      "description": "Structured price investigation for a specific ISO"
+    }
+  ],
+  "keywords": [
+    "energy",
+    "electricity",
+    "grid",
+    "CAISO",
+    "power",
+    "prices",
+    "renewable",
+    "solar",
+    "wind"
+  ],
+  "license": "MIT",
+  "user_config": {
+    "api_key": {
+      "type": "string",
+      "title": "GridStatus API Key",
+      "description": "Optional — unlocks historical data across all 7 US power markets. Get a free key at gridstatus.io",
+      "sensitive": true,
+      "required": false
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=18.0.0"
+    }
+  }
+}

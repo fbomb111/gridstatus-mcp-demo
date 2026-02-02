@@ -11,7 +11,7 @@ import { registerTools, registerAuthenticatedTools } from "./shared/tools.js";
 import { registerResources } from "./shared/resources.js";
 import { registerPrompts } from "./shared/prompts.js";
 
-const API_BASE = process.env.GRIDSTATUS_API_URL || "http://localhost:8000";
+const API_BASE = process.env.GRIDSTATUS_API_URL || "https://ca-gridstatus-api.blacksmoke-21433aca.eastus2.azurecontainerapps.io";
 
 const server = new McpServer({
   name: "gridstatus",

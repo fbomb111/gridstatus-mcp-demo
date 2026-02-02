@@ -16,5 +16,8 @@ local.settings.json
 node_modules/
 dist/
 
+# Built extensions
+*.mcpb
+
 # OS
 .DS_Store

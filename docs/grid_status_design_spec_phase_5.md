@@ -175,6 +175,57 @@ For a single-user demo, this is fine. For a multi-user production server, you'd 
 
 ---
 
+## Decision 6: Desktop Extension (.mcpb) — The Real Answer
+
+After building the anonymous OAuth skip flow, we discovered the right solution was one layer higher: **Desktop Extensions**.
+
+**The problem with the OAuth path:** Even with the skip button, the install flow required users to navigate Settings → Connectors → paste URL → complete OAuth form. Workable, but not one-click.
+
+**What Desktop Extensions provide:**
+- `.mcpb` is a zip archive containing a bundled MCP server + manifest
+- Double-click to install — Claude Desktop handles everything
+- `user_config` fields with `sensitive: true` store API keys in the OS keychain
+- Node.js ships with Claude Desktop — zero runtime dependencies for users
+
+Per the [MCPB README](https://github.com/modelcontextprotocol/mcpb): "We recommend implementing MCP servers in Node.js rather than Python to reduce installation friction. Node.js ships with Claude for macOS and Windows."
+
+**What we built:**
+
+The `.mcpb` packages our existing stdio transport (`index.ts`) with a `manifest.json` that declares an optional API key:
+
+```json
+"user_config": {
+  "api_key": {
+    "type": "string",
+    "title": "GridStatus API Key",
+    "description": "Optional — unlocks historical data across all 7 US power markets",
+    "sensitive": true,
+    "required": false
+  }
+}
+```
+
+The manifest injects the key as an env var: `"GRIDSTATUS_API_KEY": "${user_config.api_key}"`. Our `index.ts` already reads this — no code changes needed for the core logic.
+
+**The user journey becomes:**
+
+```
+1. Download gridstatus.mcpb → double-click → Install
+2. Claude Desktop prompts "API Key (optional)" → skip or enter
+3. 3 or 4 tools available immediately
+4. Want to unlock later? Settings → Extensions → GridStatus → add key → restart
+```
+
+**What stays vs what's superseded:**
+- ✅ `.mcpb` extension — primary install path for non-developers
+- ✅ Remote HTTP + OAuth (with skip button) — alternative for Connectors users
+- ✅ Local stdio with `start.sh` — developer iteration workflow
+- ❌ JSON config with remote URL — removed from README (Connectors replaced it)
+
+**Build process:** `bash scripts/build-mcpb.sh` compiles TypeScript, prunes to production deps, strips HTTP/auth files from dist, and zips as `.mcpb`. Output: ~4MB self-contained extension.
+
+---
+
 ## Summary: What Phase 5 Added
 
 | Aspect | Phase 4 State | Phase 5 Final |
@@ -182,10 +233,12 @@ For a single-user demo, this is fine. For a multi-user production server, you'd 
 | Tutorial questions | Duplicate phrasing per step | Diverse options showing query range |
 | Tutorial structure | Inconsistent setup/payoff | Context → Ask → Observe → Insight → Transition |
 | Tutorial language | MCP jargon in places | Product language throughout |
-| Authentication UX | Required on connect (always 4 tools) | Skip button → 3 tools → restart to unlock |
+| Primary install | Edit JSON config file | Download .mcpb → double-click → Install |
+| API key storage | Env var or OAuth token | OS keychain via Desktop Extension |
+| Authentication UX | Required on connect (always 4 tools) | Optional at install; add later in settings |
 | OAuth form | API key required | "Skip for now" button with anonymous tokens |
-| Install instructions | Edit JSON config file | Settings > Connectors > paste URL |
-| Step 5 | Passive explanation | Actionable: get key → restart → enter key |
+| Secondary install | N/A | Connectors + OAuth (with skip button) |
+| Step 5 (tutorial) | Passive explanation | Actionable: get key → add in extension settings → restart |
 
 ---
 
