@@ -164,3 +164,43 @@ jobs:
             --name ca-gridstatus-mcp \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --image ${{ env.ROLLBACK_IMAGE }}
+
+  release-mcpb:
+    runs-on: [self-hosted, Linux, X64]
+    needs: deploy-mcp
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Read version from package.json
+        run: |
+          VERSION=$(node -p "require('./mcp-server/package.json').version")
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "TAG=v$VERSION" >> $GITHUB_ENV
+
+      - name: Build .mcpb extension
+        run: bash mcp-server/scripts/build-mcpb.sh
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: GridStatus MCP v${{ env.VERSION }}
+          body: |
+            ## Install
+
+            1. Download `gridstatus.mcpb` below
+            2. Double-click to install in Claude Desktop
+            3. Optional: add a [gridstatus.io](https://www.gridstatus.io) API key when prompted to unlock historical data
+
+            Select **GridStatus Tutorial** from the + menu to get started.
+          files: mcp-server/gridstatus.mcpb
+          generate_release_notes: true
+          make_latest: true
