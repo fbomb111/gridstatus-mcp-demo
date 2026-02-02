@@ -467,7 +467,10 @@ export class OAuthServer {
       <input type="hidden" name="code_challenge_method" value="${this.escapeHtml(codeChallengeMethod)}">
       <input type="hidden" name="resource" value="${this.escapeHtml(resource)}">
       <label for="api_key">API Key</label>
-      <input type="text" id="api_key" name="api_key" placeholder="gsk_..." required autocomplete="off">
+      <div style="position:relative">
+        <input type="password" id="api_key" name="api_key" placeholder="Your API key" required autocomplete="off" style="padding-right:2.5rem">
+        <button type="button" onclick="const i=document.getElementById('api_key');const s=i.type==='password';i.type=s?'text':'password';this.textContent=s?'🙈':'👁'" style="position:absolute;right:0.5rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:1.1rem;padding:0.25rem" title="Toggle visibility">👁</button>
+      </div>
       <p class="help">Find your key at <a href="https://gridstatus.io/api" target="_blank" style="color:#60a5fa">gridstatus.io/api</a></p>
       <button type="submit">Authorize</button>
       <button type="submit" name="action" value="skip" formnovalidate style="background:#475569; margin-top:0.5rem;">Skip for now — explore public tools</button>

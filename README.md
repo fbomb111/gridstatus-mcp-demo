@@ -10,9 +10,9 @@ Four layers connect a user's question to live grid data:
 
 2. **MCP Server** (TypeScript, this repo) — the protocol bridge. Translates MCP tool calls into REST API requests to the backend. Also serves static resources (CAISO overview) and prompt templates (grid briefing, price investigation) directly — no backend call needed.
 
-3. **Backend API** (Python, FastAPI) — the data layer. Fetches live grid data from gridstatus.io, weather from Open-Meteo, computes statistical baselines, and calls Azure OpenAI when AI synthesis is needed.
+3. **Backend API** (Python, FastAPI) — the data layer. Fetches live grid data from gridstatus.io, weather from Open-Meteo, computes statistical baselines, and calls Microsoft Foundry when AI synthesis is needed.
 
-4. **External services** — [gridstatus.io](https://gridstatus.io) for real-time CAISO data, [Open-Meteo](https://open-meteo.com) for weather, Azure OpenAI for LLM synthesis.
+4. **External services** — [gridstatus.io](https://gridstatus.io) for real-time CAISO data, [Open-Meteo](https://open-meteo.com) for weather, Microsoft Foundry for LLM synthesis.
 
 ### Data flow by tool
 
@@ -24,7 +24,7 @@ sequenceDiagram
     participant API as Backend API
     participant GS as gridstatus.io
     participant WX as Open-Meteo
-    participant LLM as Azure OpenAI
+    participant LLM as Microsoft Foundry
 
     Note over User,LLM: Tool 1: Market Snapshot (no AI)
     User->>Claude: "What's happening on the grid?"
@@ -59,6 +59,8 @@ sequenceDiagram
     API-->>MCP: summary + JSON
     MCP-->>Claude: text content blocks
     Claude-->>User: natural language response
+
+    Note over User,LLM: Tool 4: Historical Grid Data (same data path as Tool 1, requires API key)
 ```
 
 ### Under the hood
@@ -67,14 +69,14 @@ sequenceDiagram
 
 **Price Analysis** — Gets the current average LMP and compares it against hardcoded hourly baselines (typical price for each hour of day) and a rolling 7-day statistical window. Returns standard deviations from mean (sigma), percentile rank, and a severity classification. Deterministic — same price at the same hour always produces the same verdict.
 
-**Explain Conditions** — Gathers grid data from gridstatus *and* weather from Open-Meteo (Sacramento, LA, SF temperatures and wind speeds). Passes all of it as structured context to Azure OpenAI with an energy analyst persona prompt. The LLM synthesizes a multi-paragraph explanation with ranked contributing factors. This is the only tool that uses AI on the server side — Claude Desktop's own LLM is a *second* layer of AI that interprets the result for the user.
+**Explain Conditions** — Gathers grid data from gridstatus *and* weather from Open-Meteo (Sacramento, LA, SF temperatures and wind speeds). Passes all of it as structured context to Microsoft Foundry with an energy analyst persona prompt. The LLM synthesizes a multi-paragraph explanation with ranked contributing factors. This is the only tool that uses AI on the server side — Claude Desktop's own LLM is a *second* layer of AI that interprets the result for the user.
 
 ## Project Structure
 
 ```
 backend/              FastAPI API — REST API for grid data
   routes/             Market snapshot, price analysis, AI explanation endpoints
-  services/           gridstatus SDK, weather, baselines, OpenAI, caching
+  services/           gridstatus SDK, weather, baselines, Foundry, caching
   config.py           Centralized env var configuration
   errors.py           Custom exceptions + centralized error handlers
 
@@ -90,8 +92,8 @@ mcp-server/           MCP server (TypeScript) — bridges Claude Desktop ↔ API
 
 - Node.js 18+
 - Python 3.11+
-- A gridstatus.io API key
-- Azure OpenAI endpoint (for the explain tool)
+- A gridstatus.io API key (optional — unlocks historical data across all US markets)
+- Microsoft Foundry endpoint (for the explain tool)
 
 ## Setup
 

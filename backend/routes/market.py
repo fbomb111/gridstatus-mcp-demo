@@ -6,6 +6,7 @@ Tool 3: is_price_unusual        → GET /market/price-analysis  (Approach A+: ba
 Tool 4: query_grid_history      → GET /market/history         (Authenticated: hosted API)
 """
 
+import asyncio
 import json
 import logging
 
@@ -23,14 +24,16 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-SUPPORTED_ISOS = {"CAISO"}
+# ISOs with real-time data via the open-source gridstatus library (public scraping).
+# The hosted API (Tool 4) supports all US ISOs — see services/hosted_api.py.
+REALTIME_ISOS = {"CAISO"}
 
 
 def _validate_iso(iso: str) -> str:
     """Normalize and validate ISO identifier."""
     iso = iso.upper()
-    if iso not in SUPPORTED_ISOS:
-        raise UnsupportedISOError(iso, SUPPORTED_ISOS)
+    if iso not in REALTIME_ISOS:
+        raise UnsupportedISOError(iso, REALTIME_ISOS)
     return iso
 
 
@@ -174,7 +177,8 @@ async def explain_conditions(
         "}"
     )
 
-    ai_response = complete(
+    ai_response = await asyncio.to_thread(
+        complete,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": data_context},
@@ -254,11 +258,14 @@ async def market_history(
             status_code=401,
         )
 
-    return query_historical(
-        api_key=x_gridstatus_api_key,
-        iso=iso,
-        dataset=dataset,
-        start=start,
-        end=end,
-        limit=limit,
-    )
+    try:
+        return query_historical(
+            api_key=x_gridstatus_api_key,
+            iso=iso,
+            dataset=dataset,
+            start=start,
+            end=end,
+            limit=limit,
+        )
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=502)

@@ -11,17 +11,19 @@ from gridstatusio import GridStatusClient
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_ISOS = {"CAISO", "ERCOT", "PJM", "MISO", "NYISO", "ISONE", "SPP"}
+# ISOs available via the gridstatus.io hosted API (paid, all US ISOs).
+# Real-time ISOs (free, open-source scraping) are defined in routes/market.py.
+HOSTED_API_ISOS = {"CAISO", "ERCOT", "PJM", "MISO", "NYISO", "ISONE", "SPP"}
 
 # Map user-friendly dataset names to gridstatusio dataset IDs
 DATASET_MAP = {
-    "CAISO": {"lmp": "caiso.lmp_real_time_15_min", "load": "caiso.system_demand", "fuel_mix": "caiso.fuel_mix"},
-    "ERCOT": {"lmp": "ercot.spp", "load": "ercot.system_demand", "fuel_mix": "ercot.fuel_mix"},
-    "PJM": {"lmp": "pjm.lmp_real_time_5_min", "load": "pjm.system_demand", "fuel_mix": "pjm.fuel_mix"},
-    "MISO": {"lmp": "miso.lmp_real_time_5_min", "load": "miso.system_demand", "fuel_mix": "miso.fuel_mix"},
-    "NYISO": {"lmp": "nyiso.lmp_real_time_5_min", "load": "nyiso.system_demand", "fuel_mix": "nyiso.fuel_mix"},
-    "ISONE": {"lmp": "isone.lmp_real_time_5_min", "load": "isone.system_demand", "fuel_mix": "isone.fuel_mix"},
-    "SPP": {"lmp": "spp.lmp_real_time_5_min", "load": "spp.system_demand", "fuel_mix": "spp.fuel_mix"},
+    "CAISO": {"lmp": "caiso_lmp_real_time_15_min", "load": "caiso_load", "fuel_mix": "caiso_fuel_mix"},
+    "ERCOT": {"lmp": "ercot_spp_real_time_15_min", "load": "ercot_load", "fuel_mix": "ercot_fuel_mix"},
+    "PJM": {"lmp": "pjm_lmp_real_time_5_min", "load": "pjm_load", "fuel_mix": "pjm_fuel_mix"},
+    "MISO": {"lmp": "miso_lmp_real_time_5_min", "load": "miso_load", "fuel_mix": "miso_fuel_mix"},
+    "NYISO": {"lmp": "nyiso_lmp_real_time_5_min", "load": "nyiso_load", "fuel_mix": "nyiso_fuel_mix"},
+    "ISONE": {"lmp": "isone_lmp_real_time_5_min", "load": "isone_load", "fuel_mix": "isone_fuel_mix"},
+    "SPP": {"lmp": "spp_lmp_real_time_5_min", "load": "spp_load", "fuel_mix": "spp_fuel_mix"},
 }
 
 
@@ -47,8 +49,8 @@ def query_historical(
         Dict with _summary, records, metadata.
     """
     iso = iso.upper()
-    if iso not in SUPPORTED_ISOS:
-        raise ValueError(f"Unsupported ISO: {iso}. Supported: {sorted(SUPPORTED_ISOS)}")
+    if iso not in HOSTED_API_ISOS:
+        raise ValueError(f"Unsupported ISO: {iso}. Supported: {sorted(HOSTED_API_ISOS)}")
 
     if dataset not in DATASET_MAP.get(iso, {}):
         available = list(DATASET_MAP.get(iso, {}).keys())
@@ -66,7 +68,11 @@ def query_historical(
         kwargs["end"] = end
 
     logger.info("Querying gridstatusio: %s (limit=%d, start=%s, end=%s)", dataset_id, limit, start, end)
-    df = client.get_dataset(**kwargs)
+    try:
+        df = client.get_dataset(**kwargs)
+    except Exception as e:
+        logger.error("gridstatusio API error for %s: %s", dataset_id, e)
+        raise ValueError(f"GridStatus API error: {e}") from e
 
     # Convert DataFrame to records
     records = df.to_dict(orient="records")
