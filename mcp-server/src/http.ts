@@ -83,8 +83,8 @@ async function main() {
     // MCP routes — require auth if enabled
     if (url.pathname === "/mcp") {
       if (REQUIRE_AUTH) {
-        const apiKey = oauth.validateBearerToken(req.headers.authorization);
-        if (!apiKey) {
+        const payload = oauth.validateBearerToken(req.headers.authorization);
+        if (!payload) {
           res.writeHead(401, {
             "WWW-Authenticate": `Bearer resource_metadata="${ISSUER}/.well-known/oauth-protected-resource"`,
             "Content-Type": "application/json",
@@ -92,7 +92,8 @@ async function main() {
           res.end(JSON.stringify({ error: "unauthorized", error_description: "Valid Bearer token required" }));
           return;
         }
-        currentApiKey = apiKey;
+        // Anonymous tokens (from "Skip") are valid for connection but don't provide API credentials
+        currentApiKey = payload.apiKey === "__anonymous__" ? undefined : payload.apiKey;
       }
 
       try {

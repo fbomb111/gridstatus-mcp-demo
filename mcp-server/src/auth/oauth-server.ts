@@ -16,7 +16,9 @@
 import { randomBytes, createHash } from "node:crypto";
 import { URL } from "node:url";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { TokenStore } from "./token-store.js";
+import { TokenStore, type TokenPayload } from "./token-store.js";
+
+const ANONYMOUS_API_KEY = "__anonymous__";
 
 // --- Types ---
 
@@ -212,7 +214,8 @@ export class OAuthServer {
     const body = await this.readBody(req);
     const params = new URLSearchParams(body);
 
-    const apiKey = params.get("api_key") || "";
+    const action = params.get("action") || "";
+    let apiKey = params.get("api_key") || "";
     const clientId = params.get("client_id") || "";
     const redirectUri = params.get("redirect_uri") || "";
     const state = params.get("state") || "";
@@ -220,8 +223,10 @@ export class OAuthServer {
     const codeChallengeMethod = params.get("code_challenge_method") || "S256";
     const resource = params.get("resource") || "";
 
-    if (!apiKey) {
-      this.htmlResponse(res, 400, "<h1>Error</h1><p>API key is required.</p>");
+    if (action === "skip") {
+      apiKey = ANONYMOUS_API_KEY;
+    } else if (!apiKey) {
+      this.htmlResponse(res, 400, "<h1>Error</h1><p>API key is required, or click Skip.</p>");
       return true;
     }
 
@@ -321,7 +326,8 @@ export class OAuthServer {
     });
 
     // Notify that authentication succeeded (triggers tool unlock)
-    if (this._onAuthenticated) {
+    // Only fire for real API keys — anonymous tokens don't unlock premium tools
+    if (this._onAuthenticated && authCode.apiKey !== ANONYMOUS_API_KEY) {
       this._onAuthenticated();
       this._onAuthenticated = undefined; // Fire once
     }
@@ -352,13 +358,12 @@ export class OAuthServer {
 
   /**
    * Extract and validate a Bearer token from an Authorization header.
-   * Returns the decrypted API key, or null if invalid.
+   * Returns the full token payload, or null if invalid.
    */
-  validateBearerToken(authHeader: string | undefined): string | null {
+  validateBearerToken(authHeader: string | undefined): TokenPayload | null {
     if (!authHeader?.startsWith("Bearer ")) return null;
     const token = authHeader.slice(7);
-    const payload = this.tokenStore.validateToken(token);
-    return payload?.apiKey ?? null;
+    return this.tokenStore.validateToken(token);
   }
 
   // --- PKCE ---
@@ -453,7 +458,7 @@ export class OAuthServer {
 <body>
   <div class="card">
     <h1>Connect to GridStatus</h1>
-    <p class="subtitle">Enter your gridstatus.io API key to connect this MCP server to your account.</p>
+    <p class="subtitle">Enter your gridstatus.io API key to unlock premium tools, or skip to explore public tools first.</p>
     <form method="POST" action="/oauth/authorize">
       <input type="hidden" name="client_id" value="${this.escapeHtml(clientId)}">
       <input type="hidden" name="redirect_uri" value="${this.escapeHtml(redirectUri)}">
@@ -465,6 +470,7 @@ export class OAuthServer {
       <input type="text" id="api_key" name="api_key" placeholder="gsk_..." required autocomplete="off">
       <p class="help">Find your key at <a href="https://gridstatus.io/api" target="_blank" style="color:#60a5fa">gridstatus.io/api</a></p>
       <button type="submit">Authorize</button>
+      <button type="submit" name="action" value="skip" formnovalidate style="background:#475569; margin-top:0.5rem;">Skip for now — explore public tools</button>
     </form>
     <p class="security"><span class="lock">🔒</span>Your key is encrypted and never stored in plain text.</p>
   </div>
