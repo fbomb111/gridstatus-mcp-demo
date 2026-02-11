@@ -1,33 +1,10 @@
 # Grid Status MCP Server — Design Process
 
-_How we arrived at each decision, and the reasoning behind what we built (and didn't)._
+_Concrete architecture and infrastructure choices. Phase 1 established what to build and why (10 reasoning threads challenging our assumptions about MCP's value). This phase covers how._
 
 ---
 
-## Starting Point: What Problem Are We Solving?
-
-Grid Status's mission is democratizing access to grid data. They have a powerful open-source library (`gridstatus`) and a live dashboard at gridstatus.io. The question isn't "can we build an MCP server?" — it's "should we, and if so, what should it do?"
-
-The first instinct — wrapping gridstatus in MCP tools so Claude can call it — is the wrong answer. Claude with web search can already answer conceptual grid questions. A thin wrapper just competes with that and loses. We need to add intelligence that Claude alone can't provide.
-
----
-
-## Decision 1: What NOT to Build
-
-Before figuring out what to build, we eliminated what wouldn't work:
-
-| Rejected Approach | Why |
-|---|---|
-| API wrapper around gridstatus | Claude + web search already handles conceptual questions. A wrapper adds plumbing, not value. |
-| MCP for its own sake | MCP is an interface standard, not a capability. Building MCP to show we can build MCP proves nothing. |
-| RAG over historical grid events | Already demonstrated this skill elsewhere. Adds scope without new insight for the demo. |
-| Forecasting / predictions | Different problem domain entirely. Out of scope. |
-
-**Key insight:** The demo needs to show questions that _only work_ with server-side intelligence — real-time data + computation + domain knowledge that a generic LLM doesn't have.
-
----
-
-## Decision 2: Research — What Does gridstatus Actually Offer?
+## Decision 1: Research — What Does gridstatus Actually Offer?
 
 We studied the gridstatus library to understand the data landscape:
 
@@ -48,27 +25,7 @@ We also studied the gridstatus.io live dashboard to understand what they already
 
 ---
 
-## Decision 3: MCP Server vs. Chat App
-
-Two viable approaches:
-
-**Option A: Standalone chat app** — Build a web UI that talks to grid data, does all processing internally.
-
-**Option B: MCP server** — Build tools that Claude Desktop (or any MCP client) can call.
-
-**We chose MCP.** Rationale:
-
-1. **Shows protocol thinking.** Grid Status is building data infrastructure. Understanding how to make data accessible through emerging AI interfaces is directly relevant to their product direction.
-
-2. **Lower scope, higher signal.** A chat app needs UI, auth, hosting, session management. MCP lets us focus on the intelligence layer — which is the actual demo.
-
-3. **They can try it themselves.** With MCP, the recipient can `npx gridstatus-mcp` and immediately use it in Claude Desktop. No URL to visit, no account to create.
-
-4. **Differentiating.** Most applicants would build a Streamlit app or a chatbot. MCP shows awareness of where AI tooling is heading.
-
----
-
-## Decision 4: Architecture — Local vs. Hosted Backend
+## Decision 2: Architecture — Local vs. Hosted Backend
 
 Initial thought: MCP server runs locally, calls gridstatus APIs directly.
 
@@ -95,7 +52,7 @@ The MCP client is ~50 lines of TypeScript. All intelligence lives in the backend
 
 ---
 
-## Decision 5: Infrastructure — Function App
+## Decision 3: Infrastructure — Function App
 
 Options considered:
 
@@ -115,7 +72,7 @@ Options considered:
 
 ---
 
-## Decision 6: Skip Redis for MVP
+## Decision 4: Skip Redis for MVP
 
 No external caching layer. In-memory dict with TTL is sufficient:
 - Grid data changes every 5 minutes at most
@@ -126,7 +83,7 @@ No external caching layer. In-memory dict with TTL is sufficient:
 
 ---
 
-## Decision 7: Three Tools Showing a Spectrum
+## Decision 5: Three Tools Showing a Spectrum
 
 We intentionally designed three tools that demonstrate different approaches to server-side intelligence:
 
@@ -168,7 +125,7 @@ The interviewer should see: "This person knows when to use AI and when not to. T
 
 ---
 
-## Decision 8: ISO Coverage
+## Decision 6: ISO Coverage
 
 We cover three ISOs: **CAISO** (California), **ERCOT** (Texas), **PJM** (Mid-Atlantic/Midwest).
 
@@ -207,22 +164,3 @@ This project demonstrates three things:
 
 The demo isn't "I built an MCP server." It's "I can design AI systems that add real value, know when to use what, and make thoughtful trade-offs."
 
----
-
----
-
-## What Changed After This Phase
-
-Several decisions made here were later revised based on what we learned during implementation:
-
-**Function App → Container Apps.** Decision 5 chose Azure Function App for simplicity. We pivoted when building the Streamable HTTP transport — MCP HTTP needs in-memory session state (transport instances, OAuth state), and Functions are stateless. Container Apps scale to zero (same cost benefit) while maintaining instances during active connections.
-
-**3 ISOs → CAISO only.** Decision 8 planned CAISO, ERCOT, and PJM. We cut to CAISO-only for depth over breadth. CAISO has the richest data story (solar duck curve, battery charging, renewable curtailment). One ISO done well is more impressive than three done thin — and adding more is trivial architecturally.
-
-**"No authentication" → Full OAuth 2.1.** Decision "What We Cut" listed authentication as unnecessary. This became a major feature — the MCP spec requires OAuth 2.1 for remote HTTP transport, so we built a custom OAuth server that bridges OAuth with gridstatus API keys. It's now one of the strongest parts of the demo.
-
-**Infrastructure cost model changed.** Container Apps with scale-to-zero replaced the Function App Consumption plan. CI/CD via GitHub Actions with a self-hosted runner (instead of the planned `func azure functionapp publish`). Docker images tagged with both `latest` and commit SHA.
-
-_The decisions above reflect the thinking at architecture planning time. They're preserved as-is — the pivots are documented here rather than retroactively editing the original reasoning._
-
-_Last updated: 2026-01-30_

@@ -220,6 +220,4 @@ export function registerAuthenticatedTools(
     };
   });
 
-  // Notify clients that the tool list has changed
-  server.sendToolListChanged();
 }

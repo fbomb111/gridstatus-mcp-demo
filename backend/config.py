@@ -7,7 +7,10 @@ class Settings:
     """Application settings loaded from environment variables."""
 
     def __init__(self):
-        self.cors_origins: list[str] = os.getenv("CORS_ORIGINS", "*").split(",")
+        # Default to localhost only; production must set CORS_ORIGINS explicitly
+        self.cors_origins: list[str] = os.getenv(
+            "CORS_ORIGINS", "http://localhost:3000,http://localhost:8000"
+        ).split(",")
         self.git_sha: str = os.getenv("GIT_SHA", "unknown")
         self.environment: str = os.getenv("ENVIRONMENT", "local")
 

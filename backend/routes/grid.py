@@ -1,5 +1,6 @@
 """Grid status route — fetch live data + AI summary."""
 
+import asyncio
 import json
 import logging
 
@@ -18,7 +19,8 @@ async def fuel_mix() -> dict:
     """Fetch latest CAISO fuel mix and return an AI-generated summary."""
     data = grid_data.get_fuel_mix("CAISO")
 
-    ai_response = complete(
+    ai_response = await asyncio.to_thread(
+        complete,
         messages=[
             {
                 "role": "system",

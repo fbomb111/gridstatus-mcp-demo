@@ -12,6 +12,43 @@ The remaining work: build three real tools, showcase the full MCP protocol, depl
 
 ---
 
+## The Biggest Unplanned Feature: OAuth 2.1
+
+**Original plan:** No authentication. The demo backend would be public.
+
+**What changed:** The MCP spec requires OAuth 2.1 for remote HTTP transport. Claude Desktop expects to discover OAuth metadata and run a full authorization flow before making MCP requests. You can't just skip it.
+
+**The deeper realization:** OAuth isn't just a spec requirement — it's the "user brings their own API key" pattern that makes MCP servers viable as products. GridStatus uses API keys for their hosted API. An MCP server that just hardcodes one API key is a toy. One that lets each user provide their own key — and never stores it in plain text — is a real product pattern.
+
+**Design decisions for the OAuth server:**
+
+1. **Custom OAuth server, not Auth0.** Building it ourselves (< 500 lines) demonstrates deeper protocol understanding. Auth0 would work but hides the interesting part.
+
+2. **API key → OAuth bridge.** gridstatus.io uses API keys, MCP requires OAuth. We bridge: user pastes API key in a browser form → server encrypts it into an opaque access token → Claude Desktop sends the token → server decrypts and forwards the key. The raw key is never stored.
+
+3. **AES-256-GCM token encryption.** The access token is not a JWT — it's an opaque encrypted blob containing the API key and expiration. This means the server can validate tokens without a database (just needs the encryption key).
+
+4. **PKCE required.** S256 code challenge, verifier length 43-128 characters per RFC 7636. No plain method.
+
+5. **Refresh token rotation.** Old refresh token invalidated on use, new pair issued. 7-day TTL on refresh tokens.
+
+6. **Dynamic Client Registration (RFC 7591).** Claude Desktop doesn't pre-register — it discovers the server and self-registers. Required by the MCP spec.
+
+**The OAuth flow in practice:**
+```
+Claude Desktop → discovers /.well-known/oauth-protected-resource
+              → dynamically registers via POST /oauth/register
+              → opens browser to /oauth/authorize (user pastes API key)
+              → receives authorization code via redirect
+              → exchanges code for access + refresh tokens
+              → sends Bearer token on every /mcp request
+              → server decrypts → extracts API key → forwards to backend
+```
+
+This was the most technically interesting part of the entire project — and the least planned.
+
+---
+
 ## Decision 1: Full Protocol Showcase — How Much MCP to Implement?
 
 **The question:** MCP has many primitives (tools, resources, prompts, logging, progress, annotations, completions, notifications, sampling, elicitation, roots, tasks). How many should we implement?
@@ -96,7 +133,7 @@ We implemented both transports because they serve different audiences:
 
 **Streamable HTTP** (`http.ts`) — for remote production:
 - Claude Desktop connects via URL
-- OAuth 2.1 authentication (see Decision 5)
+- OAuth 2.1 authentication (see above)
 - API key forwarding via `X-GridStatus-API-Key` header
 - All tools available immediately (no delayed registration — it would confuse remote users)
 
@@ -106,44 +143,7 @@ We implemented both transports because they serve different audiences:
 
 ---
 
-## Decision 5: OAuth 2.1 — The Biggest Unplanned Feature
-
-**Original plan:** No authentication. The demo backend would be public.
-
-**What changed:** The MCP spec requires OAuth 2.1 for remote HTTP transport. Claude Desktop expects to discover OAuth metadata and run a full authorization flow before making MCP requests. You can't just skip it.
-
-**The deeper realization:** OAuth isn't just a spec requirement — it's the "user brings their own API key" pattern that makes MCP servers viable as products. GridStatus uses API keys for their hosted API. An MCP server that just hardcodes one API key is a toy. One that lets each user provide their own key — and never stores it in plain text — is a real product pattern.
-
-**Design decisions for the OAuth server:**
-
-1. **Custom OAuth server, not Auth0.** Building it ourselves (< 500 lines) demonstrates deeper protocol understanding. Auth0 would work but hides the interesting part.
-
-2. **API key → OAuth bridge.** gridstatus.io uses API keys, MCP requires OAuth. We bridge: user pastes API key in a browser form → server encrypts it into an opaque access token → Claude Desktop sends the token → server decrypts and forwards the key. The raw key is never stored.
-
-3. **AES-256-GCM token encryption.** The access token is not a JWT — it's an opaque encrypted blob containing the API key and expiration. This means the server can validate tokens without a database (just needs the encryption key).
-
-4. **PKCE required.** S256 code challenge, verifier length 43-128 characters per RFC 7636. No plain method.
-
-5. **Refresh token rotation.** Old refresh token invalidated on use, new pair issued. 7-day TTL on refresh tokens.
-
-6. **Dynamic Client Registration (RFC 7591).** Claude Desktop doesn't pre-register — it discovers the server and self-registers. Required by the MCP spec.
-
-**The OAuth flow in practice:**
-```
-Claude Desktop → discovers /.well-known/oauth-protected-resource
-              → dynamically registers via POST /oauth/register
-              → opens browser to /oauth/authorize (user pastes API key)
-              → receives authorization code via redirect
-              → exchanges code for access + refresh tokens
-              → sends Bearer token on every /mcp request
-              → server decrypts → extracts API key → forwards to backend
-```
-
-This was the most technically interesting part of the entire project — and the least planned.
-
----
-
-## Decision 6: CI/CD with Self-Hosted Runner
+## Decision 5: CI/CD with Self-Hosted Runner
 
 **The problem:** We needed to deploy Docker containers to Azure Container Apps on every push to main.
 
@@ -162,7 +162,7 @@ This was the most technically interesting part of the entire project — and the
 
 ---
 
-## Decision 7: E2E Testing Strategy
+## Decision 6: E2E Testing Strategy
 
 Before writing formal tests, we did comprehensive end-to-end testing against the production deployment:
 
@@ -186,7 +186,7 @@ Before writing formal tests, we did comprehensive end-to-end testing against the
 
 ---
 
-## Decision 8: Interactive Tutorial Prompt
+## Decision 7: Interactive Tutorial Prompt
 
 **The question:** How do we make the demo self-guided? The user shouldn't need a README to understand what the MCP server can do.
 
@@ -219,7 +219,3 @@ The tutorial is the same prompt text in both transports (stdio and HTTP).
 | Deployment | `func start` locally | Docker + ACR + Container Apps + GitHub Actions CI/CD |
 | Documentation | Phase 1-3 design specs | Full README, architecture doc, technical spec, roadmap |
 | Onboarding | None | Interactive tutorial prompt |
-
----
-
-_Last updated: 2026-01-30_

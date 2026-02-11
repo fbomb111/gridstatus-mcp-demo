@@ -56,16 +56,11 @@ const server = new McpServer({
 // so this is safe for single-transport servers.
 let currentApiKey: string | undefined;
 
-// Register shared definitions (Toolset A: public, no API key needed)
+// Register all tools upfront — authenticated tools gate on API key at call time
 registerTools(server, API_BASE, () => currentApiKey);
+registerAuthenticatedTools(server, API_BASE, () => currentApiKey);
 registerResources(server, API_BASE, () => currentApiKey);
 registerPrompts(server);
-
-// After first OAuth authentication, register authenticated tools (Toolset B)
-oauth.onAuthenticated(() => {
-  debug("First OAuth authentication — registering authenticated tools");
-  registerAuthenticatedTools(server, API_BASE, () => currentApiKey);
-});
 
 // --- HTTP Server with OAuth ---
 

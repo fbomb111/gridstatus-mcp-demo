@@ -13,7 +13,7 @@
  * into an encrypted OAuth access token.
  */
 
-import { randomBytes, createHash } from "node:crypto";
+import { randomBytes, createHash, timingSafeEqual } from "node:crypto";
 import { URL } from "node:url";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { TokenStore, type TokenPayload } from "./token-store.js";
@@ -54,19 +54,12 @@ export class OAuthServer {
   private tokenStore: TokenStore;
   private clients = new Map<string, RegisteredClient>();
   private authCodes = new Map<string, AuthorizationCode>();
-  private _onAuthenticated?: () => void;
-
   constructor(config: OAuthServerConfig) {
     this.issuer = config.issuer;
     this.tokenStore = new TokenStore({
       secret: config.tokenSecret,
       ttlSeconds: config.tokenTtlSeconds,
     });
-  }
-
-  /** Register a callback to fire after the first successful token exchange. */
-  onAuthenticated(callback: () => void): void {
-    this._onAuthenticated = callback;
   }
 
   /**
@@ -325,13 +318,6 @@ export class OAuthServer {
       scope: "gridstatus",
     });
 
-    // Notify that authentication succeeded (triggers tool unlock)
-    // Only fire for real API keys — anonymous tokens don't unlock premium tools
-    if (this._onAuthenticated && authCode.apiKey !== ANONYMOUS_API_KEY) {
-      this._onAuthenticated();
-      this._onAuthenticated = undefined; // Fire once
-    }
-
     return true;
   }
 
@@ -372,7 +358,8 @@ export class OAuthServer {
     if (method !== "S256") return false;
     if (verifier.length < 43 || verifier.length > 128) return false;
     const computed = createHash("sha256").update(verifier).digest("base64url");
-    return computed === challenge;
+    if (computed.length !== challenge.length) return false;
+    return timingSafeEqual(Buffer.from(computed), Buffer.from(challenge));
   }
 
   // --- Helpers ---
@@ -438,12 +425,22 @@ export class OAuthServer {
     h1 { font-size: 1.25rem; margin-bottom: 0.25rem; color: #f8fafc; }
     .subtitle { color: #94a3b8; font-size: 0.875rem; margin-bottom: 1.5rem; }
     label { display: block; font-size: 0.875rem; color: #cbd5e1; margin-bottom: 0.375rem; }
-    input[type="text"] {
-      width: 100%; padding: 0.625rem 0.75rem; border-radius: 6px;
+    input[type="text"],
+    input[type="password"] {
+      width: 100%; padding: 0.625rem 2.5rem 0.625rem 0.75rem; border-radius: 6px;
       border: 1px solid #334155; background: #0f172a; color: #f1f5f9;
       font-size: 0.875rem; font-family: monospace;
     }
-    input[type="text"]:focus { outline: none; border-color: #3b82f6; }
+    input[type="text"]:focus,
+    input[type="password"]:focus { outline: none; border-color: #3b82f6; }
+    .input-wrap { position: relative; }
+    .toggle-vis {
+      position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%);
+      background: none; border: none; cursor: pointer; padding: 0.25rem;
+      color: #64748b; display: flex; align-items: center; width: auto; margin: 0;
+    }
+    .toggle-vis:hover { color: #94a3b8; }
+    .toggle-vis svg { width: 18px; height: 18px; }
     .help { font-size: 0.75rem; color: #64748b; margin-top: 0.375rem; }
     button {
       width: 100%; padding: 0.625rem; margin-top: 1.25rem;
@@ -467,9 +464,12 @@ export class OAuthServer {
       <input type="hidden" name="code_challenge_method" value="${this.escapeHtml(codeChallengeMethod)}">
       <input type="hidden" name="resource" value="${this.escapeHtml(resource)}">
       <label for="api_key">API Key</label>
-      <div style="position:relative">
-        <input type="password" id="api_key" name="api_key" placeholder="Your API key" required autocomplete="off" style="padding-right:2.5rem">
-        <button type="button" onclick="const i=document.getElementById('api_key');const s=i.type==='password';i.type=s?'text':'password';this.textContent=s?'🙈':'👁'" style="position:absolute;right:0.5rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:1.1rem;padding:0.25rem" title="Toggle visibility">👁</button>
+      <div class="input-wrap">
+        <input type="password" id="api_key" name="api_key" placeholder="Your API key" required autocomplete="off">
+        <button type="button" class="toggle-vis" title="Toggle visibility" onclick="const i=document.getElementById('api_key');const v=i.type==='password';i.type=v?'text':'password';this.querySelector('.eye-open').style.display=v?'none':'block';this.querySelector('.eye-closed').style.display=v?'block':'none'">
+          <svg class="eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          <svg class="eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+        </button>
       </div>
       <p class="help">Find your key at <a href="https://gridstatus.io/api" target="_blank" style="color:#60a5fa">gridstatus.io/api</a></p>
       <button type="submit">Authorize</button>

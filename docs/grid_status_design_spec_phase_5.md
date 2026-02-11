@@ -1,4 +1,4 @@
-# Grid Status MCP Server — Phase 5: Tutorial Polish & Anonymous OAuth
+# Grid Status MCP Server — Phase 5: Tutorial UX & Desktop Extensions
 
 _The journey from "the tutorial works" to "the tutorial teaches well" — and the discovery that authentication UX is its own design challenge. Covers iterative prompt refinement, a UX pattern for interactive tutorials, and the anonymous OAuth flow that made the onboarding story complete._
 
