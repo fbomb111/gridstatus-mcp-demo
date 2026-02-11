@@ -1,6 +1,6 @@
-# Design Discussion: How Should an MCP Server Handle Premium Features?
+# Grid Status MCP Server — Phase 6: Premium Tool Unlock & Agent-First Design
 
-_Context: Building a GridStatus MCP server for Claude Desktop. Three public tools work without authentication. We wanted to add a 4th tool requiring an API key, unlocked after OAuth. The question was how to present this to the agent._
+_How should an MCP server handle premium features? A design debate about whether agents should see tools they can't use yet — and the practical reality that settled it._
 
 ---
 
@@ -39,7 +39,7 @@ The difference comes down to who the tool list is for:
 
 In traditional REST, a 403 is normal — clients handle it, retry with auth, show a login prompt. But an LLM agent that sees a tool in its list will try to use it, potentially waste a turn explaining to the user why it failed, and create a confusing experience. The agent doesn't have a "retry with credentials" flow — it just has tools that work or don't.
 
-## What We Built
+## What We Built (First)
 
 Two-tier registration:
 
@@ -54,3 +54,43 @@ The OAuth server fires an `onAuthenticated` callback after the first successful 
 We had actually built and removed delayed tool registration earlier in the project. The first attempt used a 5-second timer after startup to simulate "premium unlock" — but Claude Desktop didn't reliably handle the `tools/list_changed` notification, so we pulled it. The feature came back for the right reason: not as a demo of the protocol primitive, but because the actual product needed it.
 
 The protocol feature (dynamic registration + notifications) found its purpose once we had a real use case for gated capabilities. The implementation was the same; the motivation made it work.
+
+## Take 3: Back to Always Visible (Reality Wins)
+
+After deploying the two-tier approach, we hit the same wall again: `tools/list_changed` notifications weren't reaching the client reliably. The `onAuthenticated` callback fired during the OAuth token exchange HTTP response — outside the MCP transport context — so the notification was lost. The 4th tool never appeared after authentication.
+
+The root cause is a **timing mismatch**: OAuth completes on an HTTP request/response cycle, but MCP tool notifications travel through the MCP transport (a separate StreamableHTTP connection). Firing a transport-level notification from an HTTP handler doesn't have the right context.
+
+We could have fixed the plumbing — queued the notification, waited for the next MCP request, piggybacked it. But we stepped back and asked: is the complexity worth it?
+
+The 4th tool's handler already validates the API key at call time:
+
+```typescript
+const apiKey = getApiKey();
+if (!apiKey) {
+  return {
+    content: [{ type: "text", text: "Authentication required: no gridstatus.io API key available." }],
+    isError: true,
+  };
+}
+```
+
+This means:
+- The tool is always visible → the tutorial prompt can reference it → Claude can explain how to unlock it
+- Calling it without a key returns a clear, actionable error — not a cryptic 403
+- After OAuth, the tool works immediately — no notification needed, no state tracking
+- Stdio transport works identically (API key from env var or absent)
+
+The agent-first argument was correct in theory: agents shouldn't see tools they can't use. But the practical tradeoff favored visibility. The error message is part of the UX — it tells the user exactly what to do. And the tutorial prompt (Step 5) checks for the tool's presence to decide which path to take, which only works if the tool is always registered.
+
+## The Lesson
+
+Three attempts at the same feature:
+
+1. **Timer-based dynamic registration** — Pulled because `tools/list_changed` was unreliable in Claude Desktop
+2. **OAuth callback dynamic registration** — Failed because the notification fired outside the transport context
+3. **Always registered, auth-gated at call time** — Works everywhere, no transport coupling
+
+The agent-first philosophy ("only show what works") is the right north star for MCP design. But the MCP ecosystem isn't there yet — `tools/list_changed` support is inconsistent across clients, and the interaction between OAuth and MCP transport contexts is underspecified. When the protocol matures, dynamic tool sets will be the correct pattern. Today, upfront registration with clear error messages is the pragmatic choice.
+
+Sometimes the first instinct is right for the wrong reasons. Claude recommended "always visible" because it's simpler. We pushed back because the agent model demands better. We built the better version. It didn't work. We came back to "always visible" — but now we know *why* it's the right choice for the current state of MCP, not just the easy one.
