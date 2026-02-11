@@ -207,6 +207,12 @@ export function registerAuthenticatedTools(
     if (!resp.ok) {
       const body = await resp.text();
       await log(server, "error", `History API error: ${resp.status} — ${body}`);
+      if (resp.status === 401 || resp.status === 403) {
+        return {
+          content: [{ type: "text" as const, text: "API key was rejected by gridstatus.io. It may be invalid, expired, or revoked. Check your key at gridstatus.io/api." }],
+          isError: true,
+        };
+      }
       return { content: [{ type: "text" as const, text: `API error: ${resp.status} ${resp.statusText}` }], isError: true };
     }
     const data = await resp.json();

@@ -3,6 +3,11 @@
  *
  * Same tools, resources, and prompts as stdio — definitions shared via src/shared/.
  * Adds OAuth authorization for API key management.
+ *
+ * Architecture: Per-request stateless transport (SDK 1.26.0+).
+ * Each POST to /mcp creates a fresh McpServer + StreamableHTTPServerTransport,
+ * matching the SDK's simpleStatelessStreamableHttp.js pattern. This is required
+ * because SDK 1.26.0's GHSA-345p-7cg4-v4c7 fix prevents reusing stateless transports.
  */
 
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
@@ -45,28 +50,28 @@ const oauth = new OAuthServer({
   tokenSecret,
 });
 
-// --- MCP Server ---
-const server = new McpServer({
-  name: "gridstatus",
-  version: VERSION,
-});
+// --- Per-request MCP Server factory ---
 
-// Module-level API key for the current request.
-// Node.js processes one request at a time per transport instance,
-// so this is safe for single-transport servers.
-let currentApiKey: string | undefined;
+/** Create a fresh McpServer with all tools, resources, and prompts registered. */
+function createMcpServer(apiKey?: string): McpServer {
+  const server = new McpServer({
+    name: "gridstatus",
+    version: VERSION,
+  });
 
-// Register all tools upfront — authenticated tools gate on API key at call time
-registerTools(server, API_BASE, () => currentApiKey);
-registerAuthenticatedTools(server, API_BASE, () => currentApiKey);
-registerResources(server, API_BASE, () => currentApiKey);
-registerPrompts(server);
+  const getApiKey = () => apiKey;
+
+  registerTools(server, API_BASE, getApiKey);
+  registerAuthenticatedTools(server, API_BASE, getApiKey);
+  registerResources(server, API_BASE, getApiKey);
+  registerPrompts(server);
+
+  return server;
+}
 
 // --- HTTP Server with OAuth ---
 
 async function main() {
-  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-
   const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url || "/", ISSUER);
     debug(`${req.method} ${url.pathname}`);
@@ -77,6 +82,8 @@ async function main() {
 
     // MCP routes — require auth if enabled
     if (url.pathname === "/mcp") {
+      let apiKey: string | undefined;
+
       if (REQUIRE_AUTH) {
         const payload = oauth.validateBearerToken(req.headers.authorization);
         if (!payload) {
@@ -88,13 +95,23 @@ async function main() {
           return;
         }
         // Anonymous tokens (from "Skip") are valid for connection but don't provide API credentials
-        currentApiKey = payload.apiKey === "__anonymous__" ? undefined : payload.apiKey;
+        apiKey = payload.apiKey === "__anonymous__" ? undefined : payload.apiKey;
       }
 
+      console.error(`[mcp] ${req.method} /mcp auth=${apiKey ? "keyed" : "anon"}`);
+
       try {
+        // Per-request: fresh server + transport (SDK 1.26.0 stateless pattern)
+        const server = createMcpServer(apiKey);
+        const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+        await server.connect(transport);
         await transport.handleRequest(req, res);
+        res.on("close", () => {
+          transport.close();
+          server.close();
+        });
       } catch (err) {
-        console.error("MCP transport error:", err);
+        console.error("[mcp] transport error:", err);
         if (!res.headersSent) {
           res.writeHead(500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: "internal_error", error_description: "MCP transport failure" }));
@@ -119,7 +136,6 @@ async function main() {
     res.end(JSON.stringify({ error: "Not found" }));
   });
 
-  await server.connect(transport);
   oauth.startTokenCleanup();
 
   httpServer.listen(PORT, () => {

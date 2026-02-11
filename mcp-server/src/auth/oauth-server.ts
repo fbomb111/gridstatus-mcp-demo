@@ -230,6 +230,18 @@ export class OAuthServer {
       return true;
     }
 
+    // Validate API key against gridstatus.io (skip for anonymous)
+    if (apiKey !== ANONYMOUS_API_KEY) {
+      const valid = await this.validateApiKey(apiKey);
+      if (!valid) {
+        this.htmlResponse(res, 400, this.renderErrorPage(
+          "Invalid API Key",
+          'That API key wasn\'t recognized by gridstatus.io. Double-check it at <a href="https://gridstatus.io/api" target="_blank" style="color:#60a5fa">gridstatus.io/api</a> and try again.',
+        ));
+        return true;
+      }
+    }
+
     // Generate authorization code
     const code = "authcode_" + randomBytes(24).toString("base64url");
     this.authCodes.set(code, {
@@ -498,6 +510,56 @@ export class OAuthServer {
         console.error(`Auth code cleanup: removed ${removed} expired code(s)`);
       }
     }, 5 * 60_000);
+  }
+
+  /** Validate an API key against the gridstatus.io API. Returns false if rejected. */
+  private async validateApiKey(apiKey: string): Promise<boolean> {
+    try {
+      const resp = await fetch("https://api.gridstatus.io/v1/datasets?limit=1", {
+        headers: { "x-api-key": apiKey },
+        signal: AbortSignal.timeout(5000),
+      });
+      return resp.ok;
+    } catch {
+      // Network error — don't block the auth flow, accept the key optimistically
+      return true;
+    }
+  }
+
+  /** Render a simple error page matching the auth page card design. */
+  private renderErrorPage(title: string, message: string): string {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GridStatus MCP — Error</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f172a; color: #e2e8f0;
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; padding: 1rem;
+    }
+    .card {
+      background: #1e293b; border-radius: 12px; padding: 2rem;
+      max-width: 420px; width: 100%; box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+    }
+    h1 { font-size: 1.25rem; margin-bottom: 0.75rem; color: #f87171; }
+    p { color: #cbd5e1; font-size: 0.875rem; line-height: 1.5; }
+    .back { display: inline-block; margin-top: 1.25rem; color: #60a5fa; font-size: 0.875rem; text-decoration: none; }
+    .back:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>${title}</h1>
+    <p>${message}</p>
+    <a class="back" href="javascript:history.back()">← Go back</a>
+  </div>
+</body>
+</html>`;
   }
 
   private escapeHtml(str: string): string {
