@@ -153,7 +153,7 @@ The stdio transport's `start.sh` wrapper runs `git pull && npm run build` on eve
 
 All 4 tools are registered at startup, including the authenticated `query_grid_history`. The tool handler validates the API key at call time and returns a clear error if none is present. This means unauthenticated users can see the tool exists but cannot use it.
 
-**Context**: We initially used dynamic registration (`onAuthenticated` callback + `tools/list_changed`), but `tools/list_changed` notifications weren't reaching the client reliably — the notification fired during the OAuth HTTP response, outside the MCP transport context. Upfront registration with call-time auth gating is the pragmatic solution. See [Phase 6](grid_status_design_spec_phase_6.md) for the full design discussion.
+**Context**: We initially used dynamic registration (`onAuthenticated` callback + `tools/list_changed`), but `tools/list_changed` notifications weren't reaching the client reliably — the notification fired during the OAuth HTTP response, outside the MCP transport context. Upfront registration with call-time auth gating is the pragmatic solution. See the "Should agents see tools they can't use?" section in [design_journey.md](design_journey.md) for the full discussion.
 
 ### 4. No Backend Egress Filtering
 

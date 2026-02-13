@@ -158,5 +158,6 @@ bash scripts/build-mcpb.sh
 
 ## Further Reading
 
-- [Capabilities & future directions](docs/capabilities.md) — MCP primitives coverage and potential expansions
-- [Architecture](docs/architecture.md) — system design details
+- [Design Journey](docs/design_journey.md) — questions, tradeoffs, and decisions behind the project
+- [Architecture](docs/architecture.md) — system design, data flows, infrastructure
+- [Capabilities](docs/capabilities.md) — MCP primitives coverage and potential expansions
