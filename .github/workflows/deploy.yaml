@@ -3,6 +3,11 @@ name: Deploy GridStatus MCP Demo
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - '.gitignore'
+      - 'LICENSE'
   workflow_dispatch:
 
 concurrency:
