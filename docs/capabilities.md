@@ -44,4 +44,4 @@ Production hardening beyond what the demo needs.
 
 ---
 
-_These items are preserved here so we remember what's possible without cluttering the active [Roadmap](../ROADMAP.md)._
+_These items are preserved here so we remember what's possible without cluttering the README._

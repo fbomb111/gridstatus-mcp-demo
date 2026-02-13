@@ -1,166 +1,62 @@
-# Grid Status MCP Server — Design Process
+# Grid Status MCP Server — Phase 2: Architecture Decisions
 
-_Concrete architecture and infrastructure choices. Phase 1 established what to build and why (10 reasoning threads challenging our assumptions about MCP's value). This phase covers how._
-
----
-
-## Decision 1: Research — What Does gridstatus Actually Offer?
-
-We studied the gridstatus library to understand the data landscape:
-
-**ISOs supported:** CAISO, ERCOT, PJM, MISO, ISONE, NYISO, SPP — all major US grid operators.
-
-**Data types available:**
-- **LMP prices** — Locational Marginal Pricing (real-time and day-ahead)
-- **Load** — Current demand and forecasts
-- **Fuel/generation mix** — Solar, wind, gas, nuclear, hydro, imports breakdown
-- **Supply** — Generation capacity online
-- **Storage** — Battery charge/discharge (CAISO especially)
-- **Curtailment** — Renewable energy wasted due to oversupply
-- **Ancillary services** — Reserves, regulation markets
-
-**Key finding:** The library is rich enough to support sophisticated analysis, not just data retrieval. This matters because it means our server-side intelligence can actually do meaningful computation.
-
-We also studied the gridstatus.io live dashboard to understand what they already surface: LMP price maps, fuel mix charts, load curves, renewables tracking. Our tools should _complement_ this dashboard, not replicate it.
+_Phase 1 established what to build and why. This phase covers how — concrete architecture and infrastructure choices._
 
 ---
 
-## Decision 2: Architecture — Local vs. Hosted Backend
+## Decision 1: Research — What Does gridstatus Offer?
 
-Initial thought: MCP server runs locally, calls gridstatus APIs directly.
+The library covers all 7 major US ISOs with rich data: LMP prices, load/forecasts, fuel mix, storage, curtailment, ancillary services. Rich enough for sophisticated analysis, not just retrieval.
 
-**Problem:** A local MCP server doing all the heavy lifting — calling multiple APIs, computing baselines from historical data, running LLM inference — would be slow and complex. The user would wait 10+ seconds for each tool call while the local process fetches data, crunches numbers, and calls OpenAI.
-
-**Revised architecture:** Thin local MCP client → Hosted backend API.
-
-```
-Claude Desktop → MCP Client (thin, just HTTP calls) → Backend API (does everything)
-```
-
-The MCP client is ~50 lines of TypeScript. All intelligence lives in the backend:
-- gridstatus library calls
-- Baseline computation
-- Weather correlation
-- LLM synthesis (for Approach B tools)
-- In-memory caching
-
-**Why this is better:**
-- User gets fast responses (backend is warm, data is cached)
-- Backend can pre-compute baselines
-- LLM calls happen server-side (no API key exposure in MCP client)
-- Interviewer can see the backend code — the intelligence is visible, not hidden in prompts
+**Key finding:** Our tools should _complement_ the gridstatus.io dashboard, not replicate it.
 
 ---
 
-## Decision 3: Infrastructure — Function App
+## Decision 2: Local vs. Hosted Backend
 
-Options considered:
+**Problem:** Local MCP server doing API calls, baseline computation, and LLM inference would be slow (10+ seconds per call).
 
-| Option | Pros | Cons |
-|---|---|---|
-| Azure App Service | Familiar, always-on | Overkill for 3 endpoints, costs even when idle |
-| Azure Container App | Scalable, modern | Container registry overhead, more config |
-| Azure Function App | Simplest deploy, pay-per-use | Cold starts possible |
-
-**We chose Function App.** This demo might lead nowhere — we don't want to maintain infrastructure for a project that could be abandoned after one interview. Function App is:
-- Single Python file deployable with `func azure functionapp publish`
-- No container registry, no App Service Plan
-- FastAPI works via ASGI adapter
-- ~$0 when not in use (Consumption plan)
-
-**Cold start tradeoff:** First request after idle may take 5-10 seconds. Acceptable for a demo — and an easy talking point about what we'd change for production (always-warm instances, Flex Consumption plan).
+**Solution:** Thin MCP client → Hosted backend API. MCP server is ~50 lines of TypeScript — all intelligence lives in the backend. This keeps the architecture legible: interviewer sees domain logic in the backend, not hidden in MCP plumbing.
 
 ---
 
-## Decision 4: Skip Redis for MVP
+## Decision 3: Azure Function App
 
-No external caching layer. In-memory dict with TTL is sufficient:
-- Grid data changes every 5 minutes at most
-- We're not handling concurrent users at scale
-- Adding Redis means another Azure resource to provision, configure, and pay for
+We chose Function App over App Service (overkill) and Container Apps (more config). Single Python file, no container registry, FastAPI via ASGI adapter, ~$0 when idle.
 
-**What we'd say in the interview:** "For production, I'd add Redis for shared caching across Function App instances and to survive cold starts. For demo, in-memory TTL cache keeps it simple and the latency penalty is a few extra seconds on cache misses — acceptable."
+**Cold start tradeoff:** Acceptable for a demo — easy talking point about production improvements.
 
----
-
-## Decision 5: Three Tools Showing a Spectrum
-
-We intentionally designed three tools that demonstrate different approaches to server-side intelligence:
-
-### Tool 1: `get_market_snapshot` — Simple Pipe (Approach A)
-
-**What it does:** Returns current prices, load, generation mix for an ISO.
-
-**Why this approach:** Sometimes data retrieval with light enrichment is all you need. The `highlights` array adds rule-based observations ("Solar at 35% — typical for afternoon"), but no LLM. This tool is fast, deterministic, and predictable.
-
-**What it demonstrates:** Not everything needs AI. Knowing when a simple pipe is the right answer is itself a design skill.
-
-### Tool 2: `is_price_unusual` — Deterministic Analysis (Approach A+)
-
-**What it does:** Compares current price to historical baselines, returns statistical analysis.
-
-**Why this approach:** "Is this price normal?" requires baselines — hourly averages, seasonal patterns, rolling windows. A generic LLM doesn't have these. But the analysis itself is deterministic: compute sigma, compute percentile, apply threshold rules, generate verdict from template.
-
-**What it demonstrates:** Domain knowledge embedded in computation, not in prompts. The baselines are the intelligence — the rest is math.
-
-### Tool 3: `explain_grid_conditions` — LLM Synthesis (Approach B)
-
-**What it does:** Fetches prices, load, generation mix, AND weather; uses an LLM to synthesize a coherent explanation of what's driving current conditions.
-
-**Why this approach:** "Why are prices high?" requires correlating multiple data sources and reasoning about causation. Rule-based logic would need hundreds of conditions. An LLM, given structured data, can synthesize a plausible explanation that reads like an analyst wrote it.
-
-**What it demonstrates:** When server-side LLM adds genuine value — not because we can, but because the alternative (hand-coding every causal relationship in the energy market) is impractical.
-
-### The Spectrum
-
-```
-get_market_snapshot          is_price_unusual           explain_grid_conditions
-     │                            │                            │
-  Simple pipe              Deterministic +              LLM synthesis
-  No AI needed             domain baselines             Multi-source correlation
-  Fast, cheap              Moderate complexity           More latency, more value
-```
-
-The interviewer should see: "This person knows when to use AI and when not to. They don't reach for the LLM by default."
+_Note: We later pivoted to Container Apps in Phase 4 when the MCP HTTP transport needed in-memory session state._
 
 ---
 
-## Decision 6: ISO Coverage
+## Decision 4: Skip Redis
 
-We cover three ISOs: **CAISO** (California), **ERCOT** (Texas), **PJM** (Mid-Atlantic/Midwest).
-
-**Why these three:**
-- Represent West, Texas, and East — geographically diverse
-- Three largest by load
-- Different market structures (ERCOT is uniquely isolated)
-- Enough to show cross-ISO comparison without overwhelming scope
-
-More ISOs can be added trivially — the architecture supports it. But three is enough to demonstrate the concept.
+In-memory dict with TTL is sufficient. Grid data changes every ~5 minutes, no concurrent users at scale. Redis would mean another resource to provision for no demo benefit.
 
 ---
 
-## What We Cut (and Why)
+## Decision 5: CAISO Only
 
-| Feature | Why We Cut It |
-|---|---|
-| Node-level pricing (MVP) | ISO averages tell the story for demo. Node-level adds complexity without demo value. |
-| Historical event lookup | "What happened during Winter Storm Uri?" is better answered by Claude + web search. |
-| Real-time alerts | Would need WebSocket/push infrastructure. Out of scope for request/response MCP. |
-| Cross-ISO arbitrage | Interesting feature, but niche audience. Save for v2 if the demo lands. |
-| Database persistence | No users to persist for. In-memory baselines refresh on startup. |
-| Authentication | Demo backend is public. If it gets abused, we'll add a simple API key. |
+Originally planned 3 ISOs (CAISO, ERCOT, PJM). Cut to CAISO only for depth over breadth — solar + batteries = richest data story. Architecture supports additional ISOs trivially.
 
 ---
 
-## Summary: The Design Philosophy
+## What We Cut
 
-This project demonstrates three things:
+| Feature | Why |
+|---------|-----|
+| Node-level pricing | ISO averages tell the story for demo |
+| Historical event lookup | Better answered by Claude + web search |
+| Real-time alerts | Needs push infrastructure, out of scope for request/response |
+| Cross-ISO arbitrage | Niche audience, save for v2 |
+| Database persistence | No users to persist for |
+| Authentication | Demo backend is public (added in Phase 4 for MCP spec compliance) |
 
-1. **Product judgment** — We started with "what's the right thing to build?" not "what's technically cool?" Every feature earns its place by answering a question Claude alone can't.
+---
 
-2. **Trade-off awareness** — We show a spectrum of approaches (pipe → deterministic → LLM) and can articulate why each tool uses the approach it does.
+## Design Philosophy
 
-3. **Practical execution** — Function App, in-memory cache, three ISOs. Scoped tight enough to ship in days, extensible enough to grow if needed.
-
-The demo isn't "I built an MCP server." It's "I can design AI systems that add real value, know when to use what, and make thoughtful trade-offs."
-
+1. **Product judgment** — Every feature earns its place by answering a question Claude alone can't
+2. **Trade-off awareness** — Spectrum of approaches (pipe → deterministic → LLM) with articulated reasoning
+3. **Practical execution** — Scoped tight enough to ship in days, extensible enough to grow

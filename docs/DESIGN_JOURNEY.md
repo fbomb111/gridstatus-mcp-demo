@@ -18,7 +18,5 @@ These 6 documents capture the design process — not just what we built, but why
 ---
 
 **Also see:**
-- [LLM_SECURITY_REVIEW.md](LLM_SECURITY_REVIEW.md) — LLM & MCP-specific security analysis (prompt injection, tool poisoning, credential exposure)
-- [INTERVIEW_GUIDE.md](INTERVIEW_GUIDE.md) — Condensed technical overview for interview prep
-- [architecture.md](architecture.md) — System architecture reference
-- [technical_spec.md](technical_spec.md) — API and tool specifications
+- [architecture.md](architecture.md) — System architecture reference (components, OAuth, infrastructure, data flows)
+- [LLM_SECURITY_REVIEW.md](LLM_SECURITY_REVIEW.md) — LLM & MCP-specific security analysis

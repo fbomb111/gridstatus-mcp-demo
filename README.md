@@ -1,25 +1,74 @@
 # GridStatus MCP Demo
 
-A Model Context Protocol (MCP) server that provides real-time California electricity grid data to Claude Desktop. Built as a comprehensive showcase of MCP protocol primitives.
+A Model Context Protocol (MCP) server that provides real-time California electricity grid data to Claude. Built as a comprehensive showcase of MCP protocol primitives.
+
+## Connect to Claude
+
+**Server URL:**
+```
+https://ca-gridstatus-mcp.blacksmoke-21433aca.eastus2.azurecontainerapps.io/mcp
+```
+
+**Claude.ai or Claude Desktop (Pro/Max):**
+
+1. Go to **Settings > Connectors > "Add custom connector"**
+2. Paste the server URL above > **Add**
+3. Click **Connect** — this opens the OAuth sign-in page
+4. Enter your [gridstatus.io](https://gridstatus.io) API key, or click "Skip for now" to use the 3 public tools
+5. Enable per conversation: click **"+" > Connectors** > toggle GridStatus on
+
+**Teams/Enterprise:** An admin adds the connector in Organization settings > Connectors first, then members connect individually via Settings > Connectors.
+
+**Note:** The backend runs on a scale-to-zero container to save cost. If the first connection attempt times out, just try again — the cold start takes a few seconds.
+
+For full setup details, see [Getting started with custom connectors](https://support.claude.com/en/articles/11175166-getting-started-with-custom-connectors-using-remote-mcp).
+
+### Other connection methods
+
+**Extension bundle (.mcpb):** Download `gridstatus.mcpb` from the [latest release](https://github.com/fbomb111/gridstatus-mcp-demo/releases) and double-click to install in Claude Desktop.
+
+**Local stdio (developer):** Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "gridstatus-dev": {
+      "command": "/absolute/path/to/gridstatus-demo/mcp-server/start.sh",
+      "env": {
+        "GRIDSTATUS_API_KEY": "your-key-here"
+      }
+    }
+  }
+}
+```
 
 ## How It Works
 
 Four layers connect a user's question to live grid data:
 
-1. **Claude Desktop** (host) — connects to the MCP server via stdio on launch. Discovers available tools, resources, and prompts. When the user asks a question, Claude decides which tools to call and synthesizes the results into a response.
+1. **Claude** (host) — connects to the MCP server, discovers available tools/resources/prompts, decides which tools to call, and synthesizes results into a response.
 
-2. **MCP Server** (TypeScript, this repo) — the protocol bridge. Translates MCP tool calls into REST API requests to the backend. Also serves static resources (CAISO overview) and prompt templates (grid briefing, price investigation) directly — no backend call needed.
+2. **MCP Server** (TypeScript) — the protocol bridge. Translates MCP tool calls into REST API requests. Also serves static resources and prompt templates directly.
 
-3. **Backend API** (Python, FastAPI) — the data layer. Fetches live grid data from gridstatus.io, weather from Open-Meteo, computes statistical baselines, and calls Microsoft Foundry when AI synthesis is needed.
+3. **Backend API** (Python, FastAPI) — fetches live grid data from gridstatus.io, weather from Open-Meteo, computes statistical baselines, and calls Microsoft Foundry for AI synthesis.
 
 4. **External services** — [gridstatus.io](https://gridstatus.io) for real-time CAISO data, [Open-Meteo](https://open-meteo.com) for weather, Microsoft Foundry for LLM synthesis.
 
-### Data flow by tool
+### Tools
+
+| Tool | What it does | AI involved? |
+|------|-------------|--------------|
+| **Market Snapshot** | Current prices, load, generation mix, rule-based highlights | No |
+| **Price Analysis** | Statistical comparison against hourly baselines (sigma, percentile, severity) | No |
+| **Explain Conditions** | Multi-paragraph analyst explanation with weather context | Yes (Foundry) |
+| **Historical Data** | Query any US ISO's historical grid data (requires API key) | No |
+
+### Data flow
 
 ```mermaid
 sequenceDiagram
     participant User
-    participant Claude as Claude Desktop
+    participant Claude as Claude
     participant MCP as MCP Server
     participant API as Backend API
     participant GS as gridstatus.io
@@ -60,16 +109,8 @@ sequenceDiagram
     MCP-->>Claude: text content blocks
     Claude-->>User: natural language response
 
-    Note over User,LLM: Tool 4: Historical Grid Data (same data path as Tool 1, requires API key)
+    Note over User,LLM: Tool 4: Historical Grid Data (requires API key)
 ```
-
-### Under the hood
-
-**Market Snapshot** — Fetches fuel mix, load, prices, and grid status from the gridstatus SDK. Generates highlights using domain rules (solar dominance at >30%, battery charging/discharging, gas reliance, price alerts). Pure data + rules, no AI.
-
-**Price Analysis** — Gets the current average LMP and compares it against hardcoded hourly baselines (typical price for each hour of day) and a rolling 7-day statistical window. Returns standard deviations from mean (sigma), percentile rank, and a severity classification. Deterministic — same price at the same hour always produces the same verdict.
-
-**Explain Conditions** — Gathers grid data from gridstatus *and* weather from Open-Meteo (Sacramento, LA, SF temperatures and wind speeds). Passes all of it as structured context to Microsoft Foundry with an energy analyst persona prompt. The LLM synthesizes a multi-paragraph explanation with ranked contributing factors. This is the only tool that uses AI on the server side — Claude Desktop's own LLM is a *second* layer of AI that interprets the result for the user.
 
 ## Project Structure
 
@@ -80,7 +121,7 @@ backend/              FastAPI API — REST API for grid data
   config.py           Centralized env var configuration
   errors.py           Custom exceptions + centralized error handlers
 
-mcp-server/           MCP server (TypeScript) — bridges Claude Desktop ↔ API
+mcp-server/           MCP server (TypeScript) — bridges Claude ↔ API
   src/index.ts        stdio transport (Claude Desktop)
   src/http.ts         Streamable HTTP transport with OAuth (port 3000)
   src/shared/         Tool, resource, and prompt definitions (shared by both transports)
@@ -88,16 +129,9 @@ mcp-server/           MCP server (TypeScript) — bridges Claude Desktop ↔ API
   start.sh            Auto-update wrapper for Claude Desktop
 ```
 
-## Prerequisites
+## Local Development
 
-- Node.js 18+
-- Python 3.11+
-- A gridstatus.io API key (optional — unlocks historical data across all US markets)
-- Microsoft Foundry endpoint (for the explain tool)
-
-## Setup
-
-### 1. Backend (FastAPI)
+### Backend (FastAPI)
 
 ```bash
 cd backend
@@ -106,9 +140,7 @@ pip install -r requirements.txt
 uvicorn app:app --reload --port 8000
 ```
 
-The API runs at `http://localhost:8000`.
-
-### 2. MCP Server
+### MCP Server
 
 ```bash
 cd mcp-server
@@ -116,18 +148,7 @@ npm install
 npm run build
 ```
 
-### 3. Connect to Claude Desktop
-
-**Install the extension (recommended):**
-
-1. Download `gridstatus.mcpb` from the [latest release](https://github.com/fbomb111/gridstatus-mcp-demo/releases)
-2. Double-click to install — Claude Desktop opens the extension installer
-3. When prompted for an API key, enter your gridstatus.io key or leave it blank to explore public tools first
-4. 3 tools work immediately; a 4th premium tool unlocks when you add a key
-
-Your API key is stored securely in the OS keychain. To add or change it later: Settings → Extensions → GridStatus.
-
-**Build the extension from source:**
+Build the extension from source:
 
 ```bash
 cd mcp-server
@@ -135,126 +156,7 @@ bash scripts/build-mcpb.sh
 # Produces gridstatus.mcpb — double-click to install
 ```
 
-**Alternative: Remote server via Connectors (OAuth):**
+## Further Reading
 
-1. Open Claude Desktop → Settings → Connectors → "Add custom connector"
-2. Paste: `https://ca-gridstatus-mcp.blacksmoke-21433aca.eastus2.azurecontainerapps.io/mcp`
-3. A sign-in form opens — enter your API key, or click "Skip for now"
-
-**Developer setup (local stdio):**
-
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "gridstatus-dev": {
-      "command": "/absolute/path/to/gridstatus-demo/mcp-server/start.sh",
-      "env": {
-        "GRIDSTATUS_API_KEY": "your-key-here"
-      }
-    }
-  }
-}
-```
-
-`start.sh` auto-pulls and rebuilds on every connect. Set `GRIDSTATUS_API_KEY` to unlock the 4th tool.
-
-## Demo Script
-
-Click the "+" icon in Claude Desktop → "Add from gridstatus" to see 4 options:
-
-### 1. Prompts (User-Controlled Templates)
-
-**Grid Briefing** (no args):
-> Click it. Claude receives a pre-structured request to get the snapshot, check if price is unusual, and explain if needed. It chains all 3 tools automatically.
-
-**Investigate Price** (takes ISO arg):
-> Click it, enter "CAISO". Claude follows a structured investigation: check price → if unusual, explain why → if normal, summarize conditions.
-
-**GridStatus Tutorial** (no args):
-> Click it. Claude walks you through an interactive tour of all features — live data, price analysis, AI explanation, authentication, and more. Pauses between steps so you can try each tool yourself.
-
-### 2. Resources (App-Controlled Context)
-
-- **CAISO Grid Overview** — static reference data (price patterns, trading hubs, grid facts)
-- **Live Grid Conditions** — fetches live snapshot from the API
-
-Attach either resource to your conversation for context before asking questions.
-
-### 3. Tools (Model-Controlled)
-
-Type these into Claude Desktop:
-
-**Tool 1 — Market Snapshot (no AI):**
-> "What's happening on the California grid right now?"
-
-Triggers `get_market_snapshot`. Returns prices, load, generation mix, highlights.
-
-**Tool 2 — Price Analysis (deterministic baselines):**
-> "Is that price normal?"
-
-Triggers `is_price_unusual`. Returns sigma, percentile, severity, template verdict.
-
-**Tool 3 — AI Explanation (LLM synthesis):**
-> "Why are conditions like this?"
-
-Triggers `explain_grid_conditions`. Returns multi-paragraph analyst explanation with contributing factors.
-
-**Tool 4 — Historical Grid Data (requires API key):**
-> "What were ERCOT prices last Tuesday?"
-
-Triggers `query_grid_history`. Only available after authenticating via OAuth (or setting `GRIDSTATUS_API_KEY` env var for stdio). Covers all US ISOs: CAISO, ERCOT, PJM, MISO, NYISO, ISONE, SPP.
-
-**Cross-tool chaining:**
-> "Give me a full grid analysis"
-
-Claude calls multiple tools because descriptions cross-reference each other (e.g., "If price looks high, follow up with is_price_unusual").
-
-### 4. Logging
-
-Check the MCP server logs:
-```
-~/Library/Logs/Claude/mcp-server-gridstatus.log
-```
-
-### 5. Progress Notifications
-
-`explain_grid_conditions` sends progress notifications at each of 5 stages. Claude Desktop doesn't display these yet, but they're protocol-correct and visible in MCP Inspector.
-
-### 6. Tool Annotations
-
-All tools declare `readOnlyHint: true` and `openWorldHint: true` — safe (read-only) but making external network calls. Visible in `tools/list` response.
-
-### 7. Completions
-
-The resource template `gridstatus://{iso}/conditions` supports autocomplete on `iso`, returning `["CAISO"]`.
-
-### 8. HTTP Transport
-
-```bash
-cd mcp-server && npm run start:http
-
-curl -X POST http://localhost:3000/mcp \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"curl","version":"1.0"}}}'
-```
-
-Same tools, resources, and prompts over HTTP instead of stdio.
-
-## MCP Capability Coverage
-
-| Capability | Implementation | Status |
-|------------|---------------|--------|
-| Tools | 3 public + 1 authenticated (unlocked after OAuth) | Working |
-| Resources | Static overview + live dynamic template | Working |
-| Prompts | 3 prompts: briefing, price investigation, interactive tutorial | Working |
-| Logging | Info/error messages during tool execution | Working |
-| Progress | 5-stage notifications on explain tool | Sent (host doesn't display yet) |
-| Annotations | readOnlyHint + openWorldHint on all tools | Working |
-| Completions | Autocomplete for resource template variables | Working |
-| Transport: stdio | Claude Desktop entry point | Working |
-| Transport: HTTP | Streamable HTTP on port 3000 | Working |
-| OAuth 2.1 | PKCE + Dynamic Client Registration + token encryption | Working |
-
-Additional MCP primitives (notifications, sampling, elicitation, tasks) are documented in [Capabilities](docs/capabilities.md) — deferred until client support matures.
+- [Capabilities & future directions](docs/capabilities.md) — MCP primitives coverage and potential expansions
+- [Architecture](docs/architecture.md) — system design details

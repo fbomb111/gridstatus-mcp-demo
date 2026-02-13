@@ -107,26 +107,6 @@ Neither approach is universally better. The demo shows when to use which.
 
 ---
 
-## Technical Approach (High Level)
-
-**Data sources:**
-
-- gridstatus open-source library (primary)
-- Weather API for correlation (OpenMeteo, free)
-- Pre-computed baselines for "is this normal?" comparisons
-
-**Server-side LLM:**
-
-- Used for Approach B tools (synthesis, explanation)
-- Not used for Approach A tools (deterministic logic suffices)
-
-**Hosting:**
-
-- Azure (leveraging existing credits)
-- Goal: they can interact with it without local setup
-
----
-
 ## What's Not in Scope (for MVP)
 
 | Cut                        | Rationale                                                                 |
@@ -148,20 +128,6 @@ Neither approach is universally better. The demo shows when to use which.
 | Demo script | Interactive tutorial prompt built into the MCP server itself — user selects it from Claude Desktop's "+" menu |
 | Hosting | Azure Container Apps (scale to zero). Custom OAuth 2.1 for remote access. |
 | ISO coverage | CAISO only. Original plan included ERCOT and PJM — cut for depth over breadth. One ISO done well demonstrates the pattern; adding more is trivial. |
-
----
-
-## Documentation
-
-| Document | Purpose |
-|----------|---------|
-| `README.md` | Setup, demo script, capability coverage — the "what is it now" doc |
-| `docs/architecture.md` | System diagrams, data flows, infrastructure, environment variables |
-| `docs/product_spec.md` | This file — product thesis and design principles |
-| `docs/technical_spec.md` | Tool schemas, backend endpoints, infrastructure details |
-| `docs/grid_status_design_spec_phase_1.md` | Design reasoning — 10 threads showing how we arrived at the A/B framework |
-| `docs/grid_status_design_spec_phase_2.md` | Architecture decisions — what we built, what we cut, and why |
-| `docs/grid_status_design_spec_phase_3.md` | Implementation journal — the actual build process, debugging, and learnings |
 
 ---
 

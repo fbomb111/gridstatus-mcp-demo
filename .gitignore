@@ -19,5 +19,8 @@ dist/
 # Built extensions
 *.mcpb
 
+# Private docs
+docs/INTERVIEW_GUIDE.md
+
 # OS
 .DS_Store

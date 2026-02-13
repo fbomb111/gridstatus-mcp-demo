@@ -153,6 +153,8 @@ FastAPI application serving 5 endpoints. Each endpoint demonstrates a different 
 | `foundry_client.py` | Azure OpenAI | `complete()` function via Managed Identity |
 | `cache.py` | In-memory TTL cache | Simple dict-based cache with expiration |
 
+**Baseline computation** (`baselines.py`): Hardcoded hourly baselines (typical price per hour of day) plus a rolling 7-day statistical window. No database — baselines are in-memory constants derived from historical CAISO data. Output: sigma (std devs from mean), percentile (rank in 7-day distribution), severity (normal → elevated → high → extreme), and a template-generated verdict (no LLM).
+
 ### 4. Three Tool Approaches (Design Philosophy)
 
 The three market tools intentionally demonstrate a spectrum of AI involvement:
